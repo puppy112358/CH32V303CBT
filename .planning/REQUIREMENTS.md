@@ -75,30 +75,30 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COMM-01 | TBD | Pending |
-| COMM-02 | TBD | Pending |
-| COMM-03 | TBD | Pending |
-| I2C-01 | TBD | Pending |
-| I2C-02 | TBD | Pending |
-| I2C-03 | TBD | Pending |
-| CTRL-01 | TBD | Pending |
-| CTRL-02 | TBD | Pending |
-| CTRL-03 | TBD | Pending |
-| PROT-01 | TBD | Pending |
-| PROT-02 | TBD | Pending |
-| PROT-03 | TBD | Pending |
-| PROT-04 | TBD | Pending |
-| LED-01 | TBD | Pending |
-| LED-02 | TBD | Pending |
-| FAN-01 | TBD | Pending |
-| FAN-02 | TBD | Pending |
-| FAN-03 | TBD | Pending |
+| COMM-01 | Phase 3 | Pending |
+| COMM-02 | Phase 3 | Pending |
+| COMM-03 | Phase 1 | Pending |
+| I2C-01 | Phase 1 | Pending |
+| I2C-02 | Phase 1 | Pending |
+| I2C-03 | Phase 1 | Pending |
+| CTRL-01 | Phase 2 | Pending |
+| CTRL-02 | Phase 2 | Pending |
+| CTRL-03 | Phase 2 | Pending |
+| PROT-01 | Phase 2 | Pending |
+| PROT-02 | Phase 2 | Pending |
+| PROT-03 | Phase 2 | Pending |
+| PROT-04 | Phase 2 | Pending |
+| LED-01 | Phase 4 | Pending |
+| LED-02 | Phase 4 | Pending |
+| FAN-01 | Phase 4 | Pending |
+| FAN-02 | Phase 4 | Pending |
+| FAN-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-02*
-*Last updated: 2026-06-02 after initial definition*
+*Last updated: 2026-06-02 after roadmap creation*
