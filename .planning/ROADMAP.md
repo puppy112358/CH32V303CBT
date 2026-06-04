@@ -23,7 +23,12 @@ Four-phase build delivering a safe, remotely-controllable electronic load: hardw
   2. Developer can write a 16-bit DAC value to DAC8571 at address 0x4C and observe the corresponding analog output voltage change
   3. I2C bus automatically recovers (9-clock-pulse reset sequence) when a slave device holds SDA low; a stuck device never hangs the system beyond its configured timeout period
   4. Debug log messages appear on the USB-CDC virtual serial port (printf redirected via `_write()` syscall) when the MCU is connected to a PC via USB
-**Plans**: TBD
+**Plans**: 3 plans (3 waves, sequential due to User/main.c shared ownership)
+
+Plans:
+- [ ] 01-01-PLAN.md — i2c_util wrapper + one INA226 end-to-end read via USART1 (I2C-01 partial, I2C-03)
+- [ ] 01-02-PLAN.md — INA226 expansion (all devices, all getters) + DAC8571 driver (I2C-01 complete, I2C-02)
+- [ ] 01-03-PLAN.md — USB-CDC debug output adaptation from WCH SimulateCDC (COMM-03)
 
 ### Phase 2: Control Loop + Protection
 **Goal**: The electronic load maintains a set voltage or current with all hardware over-current protection active and a soft-start ramp preventing inrush
@@ -67,7 +72,7 @@ Four-phase build delivering a safe, remotely-controllable electronic load: hardw
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Hardware Foundation | 0/0 | Not started | - |
+| 1. Hardware Foundation | 0/3 | Not started | - |
 | 2. Control Loop + Protection | 0/0 | Not started | - |
 | 3. Communication | 0/0 | Not started | - |
 | 4. Status Display + Cooling | 0/0 | Not started | - |
