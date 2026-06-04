@@ -506,27 +506,20 @@ i2c_status_t ina226_check_alert(INA226_Dev *dev, uint16_t *mask);
 | A3 | 32K SRAM is sufficient for the added code and buffers (I2C+CDC) | Standard Stack | MEDIUM: The simplified CDC implementation removes ~3KB of UART bridge buffers. Code size increase is estimated at 5-8KB Flash and 1-2KB RAM (device state structs + CDC buffers). If SRAM proves tight, USB-CDC buffers can be reduced (64-byte USB max packet size is minimum). |
 | A4 | WCH SimulateCDC code is compatible with CH32V303CBT6 (CH32V30x_D8 variant, not D8C) | USB-CDC | LOW: The SimulateCDC example does not use `#ifdef CH32V30x_D8C` -- it uses `#else` for the non-D8C path which is correct for CH32V303CBT6. Verified in `USBFS_RCC_Init()`. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **CRITICAL: INA226 address plan (0x40-0x44 vs datasheet limitation)**
+1. **CRITICAL: INA226 address plan (0x40-0x44 vs datasheet limitation)** — RESOLVED: Plan 01-02 Task 1 is a `checkpoint:human-verify` that gates multi-device INA226 expansion on user confirmation of the physical addressing scheme. The checkpoint presents the datasheet limitation (4 addresses) and asks the user to confirm actual hardware wiring. If 0x42/0x43 are not physically reachable, the executor will adjust to use only confirmed addresses (I2C2, mux, or alternate sensor per user direction).
    - What we know: CONTEXT.md specifies 5x INA226 at addresses 0x40-0x44. The INA226 datasheet only provides 4 addresses (0x40, 0x41, 0x44, 0x45) via A0/A1 pins. Addresses 0x42 and 0x43 do not exist on standard INA226.
-   - What's unclear: Does the hardware design use an I2C multiplexer? Are different sensors used for two channels? Is I2C2 also available on the board?
-   - Recommendation: **Halt implementation on INA226 driver until user confirms the physical addressing scheme.** The CONTEXT.md addresses may be aspirational rather than physically verified. If confirmed, document the actual hardware configuration. If not possible, recommend: use I2C1 for 4x INA226 at 0x40/0x41/0x44/0x45 + DAC8571 at 0x4C, and use I2C2 for the 5th INA226 (or use a TCA9548A I2C mux on I2C1).
+   - Decision: Halt INA226 driver expansion at Plan 01-02 Task 1 until user confirms hardware addressing.
 
-2. **VREF voltage for DAC8571**
-   - What we know: DAC8571 output range is 0 to VREF. The output drives an op-amp comparator for CV/CC control loop. VREF determines the maximum reference voltage.
-   - What's unclear: What is the VREF voltage on the board design? This affects DAC code-to-voltage mapping but does not block Phase 01 (any VREF works for validation).
-   - Recommendation: Implement driver assuming VREF is known at compile time (`#define DAC8571_VREF 3.3f` for typical 3.3V) or configurable at init. Validate by writing known DAC values and measuring analog output.
+2. **VREF voltage for DAC8571** — RESOLVED: Default `#define DAC8571_VREF 3.3f` (3.3V typical for this MCU board). Configurable at compile time. Any VREF works for Phase 01 validation — measure analog output to verify.
+   - Decision: Use 3.3V as default; make it a `#define` for easy adjustment.
 
-3. **USB-CDC VID/PID assignment**
-   - What we know: WCH's example uses VID=0x1A86 (WCH) and PID=0xFE0C.
-   - What's unclear: Should Phase 01 use WCH's VID for development, or should a custom PID be assigned? Using WCH VID requires WCH driver on Windows.
-   - Recommendation: Keep WCH VID/PID for Phase 01 development. The descriptors are purely for debug output -- no production device identity is needed yet. This can be changed later without affecting the driver code.
+3. **USB-CDC VID/PID assignment** — RESOLVED: Keep WCH defaults (VID=0x1A86, PID=0xFE0C) for Phase 01 development. These are proven working with the WCH CDC ACM driver on Windows/Linux. Production identity can be assigned later without driver code changes.
+   - Decision: Use WCH VID/PID for development.
 
-4. **INA226 shunt resistor values**
-   - What we know: D-10 requires identical shunt resistors across all 5 devices for shared calibration.
-   - What's unclear: What is the actual R_SHUNT value on the PCB? This directly determines the calibration register value and measurement accuracy.
-   - Recommendation: Define `INA226_R_SHUNT` as a configurable `#define` with a placeholder value. The calibration formula is documented. User verifies with actual hardware measurement.
+4. **INA226 shunt resistor values** — RESOLVED: Define `INA226_R_SHUNT` as a configurable `#define` with a placeholder value (e.g., 0.01f for 10mOhm). Calibration formula is documented in the driver header. User sets the actual value based on PCB BOM before enabling current measurement.
+   - Decision: Configurable `#define` with documented calibration formula.
 
 ## Environment Availability
 
