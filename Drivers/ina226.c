@@ -90,3 +90,148 @@ i2c_status_t ina226_get_bus_voltage(INA226_Dev *dev, float *voltage_v)
 
     return I2C_OK;
 }
+
+/*********************************************************************
+ * @fn      ina226_get_shunt_voltage
+ *
+ * @brief   Read the shunt voltage register (0x01) from an INA226
+ *          device and convert to millivolts.
+ *
+ *          INA226 shunt voltage register is 16-bit MSB-first, signed.
+ *          Conversion: shunt_mv = raw * 2.5 uV (0.0025 mV)
+ *
+ * @param   dev        - Pointer to INA226_Dev struct
+ * @param   voltage_mv - Output: shunt voltage in millivolts
+ *
+ * @return  I2C_OK on success, or i2c_status_t error code
+ */
+i2c_status_t ina226_get_shunt_voltage(INA226_Dev *dev, float *voltage_mv)
+{
+    i2c_status_t status;
+    uint8_t buf[2];
+    int16_t rawValue;
+
+    /* Read 2 bytes from shunt voltage register (0x01) */
+    status = i2c_util_read(dev->address, INA226_REG_SHUNT_V,
+                           buf, 2, I2C_TIMEOUT_MS);
+    if (status != I2C_OK)
+    {
+        return status;
+    }
+
+    /* Parse MSB-first 16-bit signed value */
+    rawValue = (int16_t)(((uint16_t)buf[0] << 8) | (uint16_t)buf[1]);
+
+    /* Convert to millivolts: LSB = 2.5 uV */
+    *voltage_mv = (float)rawValue * 0.0025f;
+
+    return I2C_OK;
+}
+
+/*********************************************************************
+ * @fn      ina226_get_current
+ *
+ * @brief   Read the current register (0x04) from an INA226 device
+ *          and convert to amperes.
+ *
+ *          INA226 current register is 16-bit MSB-first, signed.
+ *          Conversion: current_a = raw * INA226_CURRENT_LSB
+ *
+ * @param   dev       - Pointer to INA226_Dev struct
+ * @param   current_a - Output: current in amperes
+ *
+ * @return  I2C_OK on success, or i2c_status_t error code
+ */
+i2c_status_t ina226_get_current(INA226_Dev *dev, float *current_a)
+{
+    i2c_status_t status;
+    uint8_t buf[2];
+    int16_t rawValue;
+
+    /* Read 2 bytes from current register (0x04) */
+    status = i2c_util_read(dev->address, INA226_REG_CURRENT,
+                           buf, 2, I2C_TIMEOUT_MS);
+    if (status != I2C_OK)
+    {
+        return status;
+    }
+
+    /* Parse MSB-first 16-bit signed value */
+    rawValue = (int16_t)(((uint16_t)buf[0] << 8) | (uint16_t)buf[1]);
+
+    /* Convert to amperes */
+    *current_a = (float)rawValue * INA226_CURRENT_LSB;
+
+    return I2C_OK;
+}
+
+/*********************************************************************
+ * @fn      ina226_get_power
+ *
+ * @brief   Read the power register (0x03) from an INA226 device
+ *          and convert to watts.
+ *
+ *          INA226 power register is 16-bit MSB-first, unsigned.
+ *          Conversion: power_w = raw * 25 * INA226_CURRENT_LSB
+ *
+ * @param   dev     - Pointer to INA226_Dev struct
+ * @param   power_w - Output: power in watts
+ *
+ * @return  I2C_OK on success, or i2c_status_t error code
+ */
+i2c_status_t ina226_get_power(INA226_Dev *dev, float *power_w)
+{
+    i2c_status_t status;
+    uint8_t buf[2];
+    uint16_t rawValue;
+
+    /* Read 2 bytes from power register (0x03) */
+    status = i2c_util_read(dev->address, INA226_REG_POWER,
+                           buf, 2, I2C_TIMEOUT_MS);
+    if (status != I2C_OK)
+    {
+        return status;
+    }
+
+    /* Parse MSB-first 16-bit unsigned value */
+    rawValue = ((uint16_t)buf[0] << 8) | (uint16_t)buf[1];
+
+    /* Convert to watts: P_LSB = 25 * Current_LSB */
+    *power_w = (float)rawValue * 25.0f * INA226_CURRENT_LSB;
+
+    return I2C_OK;
+}
+
+/*********************************************************************
+ * @fn      ina226_check_alert
+ *
+ * @brief   Read the alert Mask/Enable register (0x06) from an INA226
+ *          device and return the raw mask value.
+ *
+ *          Per D-12: reads and returns the raw register value.
+ *          Application code decides what protective action to take
+ *          based on the alert flags.
+ *
+ * @param   dev  - Pointer to INA226_Dev struct
+ * @param   mask - Output: raw 16-bit alert mask register value
+ *
+ * @return  I2C_OK on success, or i2c_status_t error code
+ */
+i2c_status_t ina226_check_alert(INA226_Dev *dev, uint16_t *mask)
+{
+    i2c_status_t status;
+    uint8_t buf[2];
+
+    /* Read 2 bytes from alert register (0x06) */
+    status = i2c_util_read(dev->address, INA226_REG_ALERT,
+                           buf, 2, I2C_TIMEOUT_MS);
+    if (status != I2C_OK)
+    {
+        return status;
+    }
+
+    /* Parse MSB-first 16-bit value — raw mask, no interpretation */
+    *mask = ((uint16_t)buf[0] << 8) | (uint16_t)buf[1];
+
+    return I2C_OK;
+}
