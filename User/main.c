@@ -22,6 +22,7 @@
 #include "../Drivers/i2c_util.h"
 #include "../Drivers/ina226.h"
 #include "../Drivers/dac8571.h"
+#include "../Drivers/usb_cdc.h"
 
 /* Global typedef */
 
@@ -104,6 +105,11 @@ int main(void)
         printf("DAC8571 mid-scale test: FAIL (%d)\r\n", dac_status);
     }
 
+    /* Initialize USB-CDC for debug output via virtual COM port */
+    printf("Initializing USB-CDC...\r\n");
+    usb_cdc_init();
+    printf("USB-CDC ready — connect USB for virtual COM port\r\n");
+
     /* Main loop: read all INA226 channels and print via USART1 */
     while (1)
     {
@@ -121,10 +127,12 @@ int main(void)
             if (st == I2C_OK)
             {
                 printf("CH%d Bus: %.3f V  ", devs[i].channel, busVoltage);
+                usb_printf("CH%d Bus: %.3f V  ", devs[i].channel, busVoltage);
             }
             else
             {
                 printf("CH%d Bus: ERR(%d)  ", devs[i].channel, st);
+                usb_printf("CH%d Bus: ERR(%d)  ", devs[i].channel, st);
             }
 
             /* Read shunt voltage */
@@ -133,10 +141,12 @@ int main(void)
             if (st == I2C_OK)
             {
                 printf("Shunt: %.3f mV  ", shuntVoltage);
+                usb_printf("Shunt: %.3f mV  ", shuntVoltage);
             }
             else
             {
                 printf("Shunt: ERR(%d)  ", st);
+                usb_printf("Shunt: ERR(%d)  ", st);
             }
 
             /* Read current */
@@ -145,10 +155,12 @@ int main(void)
             if (st == I2C_OK)
             {
                 printf("Cur: %.3f A  ", current);
+                usb_printf("Cur: %.3f A  ", current);
             }
             else
             {
                 printf("Cur: ERR(%d)  ", st);
+                usb_printf("Cur: ERR(%d)  ", st);
             }
 
             /* Read power */
@@ -157,15 +169,18 @@ int main(void)
             if (st == I2C_OK)
             {
                 printf("Pwr: %.3f W\r\n", power);
+                usb_printf("Pwr: %.3f W\r\n", power);
             }
             else
             {
                 printf("Pwr: ERR(%d)\r\n", st);
+                usb_printf("Pwr: ERR(%d)\r\n", st);
             }
         }
 
         /* DAC status reminder: mid-scale value is active */
         printf("DAC=0x8000 (mid-scale)\r\n\r\n");
+        usb_printf("DAC=0x8000 (mid-scale)\r\n\r\n");
 
         Delay_Ms(500);
     }
