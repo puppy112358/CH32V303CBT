@@ -91,7 +91,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Hardware Foundation | 3/3 | Complete   | 2026-06-05 |
+| 1. Hardware Foundation | 3/3 | Complete    | 2026-06-05 |
 | 2. Control Loop + Protection | 0/0 | Not started | - |
 | 3. Communication | 0/0 | Not started | - |
 | 4. Status Display + Cooling | 0/0 | Not started | - |

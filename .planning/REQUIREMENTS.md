@@ -11,13 +11,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **COMM-01**: 上位机通过UART0发送cJSON格式指令，设置CV恒压值或CC恒流值，波特率>115200bps，奇校验
 - [ ] **COMM-02**: 系统通过UART0以cJSON格式上报测量数据（4路MOS电流/电压+汇总电流/电压/功率），频率10Hz
-- [ ] **COMM-03**: USB-CDC虚拟串口提供调试日志输出（printf重定向），不影响UART0指令通道
+- [x] **COMM-03**: USB-CDC虚拟串口提供调试日志输出（printf重定向），不影响UART0指令通道
 
 ### I2C设备驱动 (I2C)
 
-- [ ] **I2C-01**: I2C1总线驱动5个INA226（地址0x40-0x44），读取总线电压、分流电压、电流、功率寄存器
-- [ ] **I2C-02**: I2C1总线驱动DAC8571IDGK（地址0x4C），16位DAC输出参考电压
-- [ ] **I2C-03**: I2C总线超时恢复机制 — 每次I2C操作带tick-count超时，从设备卡死时执行9时钟脉冲总线复位
+- [x] **I2C-01**: I2C1总线驱动5个INA226（地址0x40-0x44），读取总线电压、分流电压、电流、功率寄存器
+- [x] **I2C-02**: I2C1总线驱动DAC8571IDGK（地址0x4C），16位DAC输出参考电压
+- [x] **I2C-03**: I2C总线超时恢复机制 — 每次I2C操作带tick-count超时，从设备卡死时执行9时钟脉冲总线复位
 
 ### 控制回路 (CTRL)
 
@@ -77,10 +77,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | COMM-01 | Phase 3 | Pending |
 | COMM-02 | Phase 3 | Pending |
-| COMM-03 | Phase 1 | Pending |
-| I2C-01 | Phase 1 | Pending |
-| I2C-02 | Phase 1 | Pending |
-| I2C-03 | Phase 1 | Pending |
+| COMM-03 | Phase 1 | Complete |
+| I2C-01 | Phase 1 | Complete |
+| I2C-02 | Phase 1 | Complete |
+| I2C-03 | Phase 1 | Complete |
 | CTRL-01 | Phase 2 | Pending |
 | CTRL-02 | Phase 2 | Pending |
 | CTRL-03 | Phase 2 | Pending |
