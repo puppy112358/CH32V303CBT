@@ -30,7 +30,7 @@ Four-phase build delivering a safe, remotely-controllable electronic load: hardw
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — i2c_util wrapper + one INA226 end-to-end read via USART1 (I2C-01 partial, I2C-03)
+- [x] 01-01-PLAN.md — i2c_util wrapper + one INA226 end-to-end read via USART1 (I2C-01 partial, I2C-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -91,7 +91,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Hardware Foundation | 0/3 | Not started | - |
+| 1. Hardware Foundation | 1/3 | In Progress|  |
 | 2. Control Loop + Protection | 0/0 | Not started | - |
 | 3. Communication | 0/0 | Not started | - |
 | 4. Status Display + Cooling | 0/0 | Not started | - |
