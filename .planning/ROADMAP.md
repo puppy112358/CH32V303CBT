@@ -6,7 +6,7 @@ Four-phase build delivering a safe, remotely-controllable electronic load: hardw
 
 ## Phases
 
-- [ ] **Phase 1: Hardware Foundation** - I2C1 bus validated against all 6 devices, USB-CDC debug output operational
+- [x] **Phase 1: Hardware Foundation** - I2C1 bus validated against all 6 devices, USB-CDC debug output operational (completed 2026-06-05)
 - [ ] **Phase 2: Control Loop + Protection** - CV/CC PID control with per-MOSFET over-current protection and soft-start
 - [ ] **Phase 3: Communication** - UART0 cJSON remote command protocol and 10Hz telemetry reporting
 - [ ] **Phase 4: Status Display + Cooling** - WS2812 LED mode indication and PID-controlled fan cooling
@@ -38,7 +38,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — USB-CDC debug output adaptation from WCH SimulateCDC (COMM-03)
+- [x] 01-03-PLAN.md — USB-CDC debug output adaptation from WCH SimulateCDC (COMM-03)
 
 ### Phase 2: Control Loop + Protection
 
@@ -91,7 +91,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Hardware Foundation | 2/3 | In Progress|  |
+| 1. Hardware Foundation | 3/3 | Complete   | 2026-06-05 |
 | 2. Control Loop + Protection | 0/0 | Not started | - |
 | 3. Communication | 0/0 | Not started | - |
 | 4. Status Display + Cooling | 0/0 | Not started | - |
