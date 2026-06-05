@@ -34,7 +34,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — INA226 expansion (all devices, all getters) + DAC8571 driver (I2C-01 complete, I2C-02)
+- [x] 01-02-PLAN.md — INA226 expansion (all devices, all getters) + DAC8571 driver (I2C-01 complete, I2C-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -91,7 +91,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Hardware Foundation | 1/3 | In Progress|  |
+| 1. Hardware Foundation | 2/3 | In Progress|  |
 | 2. Control Loop + Protection | 0/0 | Not started | - |
 | 3. Communication | 0/0 | Not started | - |
 | 4. Status Display + Cooling | 0/0 | Not started | - |

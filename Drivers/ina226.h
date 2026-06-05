@@ -30,6 +30,16 @@ extern "C" {
 #define INA226_REG_ALERT         0x06   /* Mask/Enable register (alert) */
 
 /* --------------------------------------------------------------------------
+ * Alert Register Flag Bits (Mask/Enable register 0x06)
+ * -------------------------------------------------------------------------- */
+#define INA226_ALERT_SHUNT_OV      ((uint16_t)1 << 15)  /* Shunt Voltage Over-Voltage */
+#define INA226_ALERT_SHUNT_UV      ((uint16_t)1 << 14)  /* Shunt Voltage Under-Voltage */
+#define INA226_ALERT_BUS_OV        ((uint16_t)1 << 13)  /* Bus Voltage Over-Voltage */
+#define INA226_ALERT_BUS_UV        ((uint16_t)1 << 12)  /* Bus Voltage Under-Voltage */
+#define INA226_ALERT_POWER_OV      ((uint16_t)1 << 11)  /* Power Over-Limit */
+#define INA226_ALERT_CONV_READY    ((uint16_t)1 << 3)   /* Conversion Ready */
+
+/* --------------------------------------------------------------------------
  * Calibration Constants (compile-time, all devices share these per D-10)
  *
  * Users MUST adjust INA226_R_SHUNT and INA226_MAX_CURRENT to match their
@@ -89,6 +99,27 @@ i2c_status_t ina226_init(INA226_Dev *dev);
  * Bus voltage LSB = 1.25 mV. Stores result in *voltage_v.
  * Returns I2C status code from the underlying i2c_util_read call. */
 i2c_status_t ina226_get_bus_voltage(INA226_Dev *dev, float *voltage_v);
+
+/* Read the shunt voltage register (0x01) and convert to millivolts.
+ * Shunt voltage LSB = 2.5 uV. Stores result in *voltage_mv.
+ * Returns I2C status code from the underlying i2c_util_read call. */
+i2c_status_t ina226_get_shunt_voltage(INA226_Dev *dev, float *voltage_mv);
+
+/* Read the current register (0x04) and convert to amperes.
+ * Current LSB = INA226_CURRENT_LSB. Stores result in *current_a.
+ * Returns I2C status code from the underlying i2c_util_read call. */
+i2c_status_t ina226_get_current(INA226_Dev *dev, float *current_a);
+
+/* Read the power register (0x03) and convert to watts.
+ * Power LSB = 25 * INA226_CURRENT_LSB. Stores result in *power_w.
+ * Returns I2C status code from the underlying i2c_util_read call. */
+i2c_status_t ina226_get_power(INA226_Dev *dev, float *power_w);
+
+/* Read the alert Mask/Enable register (0x06) and return the raw mask value.
+ * Per D-12: reads and returns the raw register value in *mask.
+ * Application code decides what protective action to take.
+ * Returns I2C status code from the underlying i2c_util_read call. */
+i2c_status_t ina226_check_alert(INA226_Dev *dev, uint16_t *mask);
 
 #ifdef __cplusplus
 }
