@@ -24,6 +24,7 @@
 #include "../Drivers/dac8571.h"
 #include "../Drivers/pid.h"
 #include "../Drivers/fault.h"
+#include "../Drivers/protocol.h"
 #include "../Drivers/usb_cdc.h"
 
 /* External references for ISR modules */
@@ -266,6 +267,9 @@ int main(void)
     usb_cdc_init();
     printf("USB-CDC ready — connect USB for virtual COM port\r\n");
 
+    /* Initialize protocol (USART2 command/telemetry channel) */
+    protocol_init();
+
     /* Initialize PID controllers */
     pid_init(&pid_cv, PID_CV_KP, PID_CV_KI, PID_CV_KD);
     pid_init(&pid_cc, PID_CC_KP, PID_CC_KI, PID_CC_KD);
@@ -278,8 +282,8 @@ int main(void)
     printf("Fault handler initialized (rated: %.1fW, max retries: %d)\r\n",
            RATED_WATTAGE, MAX_RETRY_COUNT);
 
-    /* TODO: replace test engage with cJSON command in Phase 3 */
-    engage_cv(5.0f);
+    /* Phase 2 test engage replaced by cJSON commands in Phase 3 */
+    /* System now starts in MODE_IDLE and waits for commands via USART2 */
 
     /* Main control loop: 100ms SysTick-gated */
     while (1)
