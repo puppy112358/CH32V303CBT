@@ -9,6 +9,7 @@
 *                      and 30s fault-free retry counter reset.
 *******************************************************************************/
 #include "../Drivers/fault.h"
+#include "../Drivers/dac8571.h"
 #include "debug.h"
 
 /* --------------------------------------------------------------------------
@@ -183,15 +184,15 @@ void fault_clear(void)
     fault_reg.bits.auto_recovery = 1;
 
     /* Transition to IDLE */
-    if (system_mode == MODE_FAULT)
-    {
-        system_mode = MODE_IDLE;
-    }
+    system_mode = MODE_IDLE;
+
+    /* Zero DAC output for safety */
+    dac8571_set_output(0);
 
     /* Reset cooldown state */
     cooldown_counter = 0;
 
-    printf("[FAULT] Cleared\r\n");
+    printf("Fault cleared — transitioning FAULT->IDLE\r\n");
 }
 
 /*********************************************************************
