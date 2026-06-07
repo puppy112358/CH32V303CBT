@@ -61,6 +61,9 @@ float cv_target_voltage = 0.0f;
 float cc_target_current = 0.0f;
 uint32_t last_control_tick = 0;
 
+/* Running cycle counter (extern-visible for protocol.c uptime in get_status) */
+uint32_t cycle_count = 0;
+
 /*
  * INA226 device array — 5 devices on I2C1 at addresses confirmed by hardware:
  *   0x40: MOS Channel 1 (A1=GND, A0=GND)
@@ -293,7 +296,6 @@ int main(void)
         float bus_p;
         float mos_i[4];
         uint32_t now;
-        static uint32_t cycle_count = 0;
         static uint32_t fault_free_ms = 0;
 
         /* 100ms control period gating via SysTick counter */
@@ -303,6 +305,15 @@ int main(void)
             continue;
         }
         last_control_tick = now;
+
+        /* 0. Poll for incoming commands (Phase 3) */
+        {
+            const char *cmd_line = protocol_poll();
+            if (cmd_line != NULL)
+            {
+                protocol_process_command(cmd_line);
+            }
+        }
 
         /* 1. Read summary INA226 for PID feedback (devs[4] = summary) */
         bus_v = 0.0f;
