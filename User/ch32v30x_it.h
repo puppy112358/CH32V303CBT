@@ -15,6 +15,7 @@
 #include "debug.h"
 #include "../Drivers/ina226.h"
 #include "../Drivers/dac8571.h"
+#include "../Drivers/protocol.h"
 
 
 #endif /* __CH32V30x_IT_H */

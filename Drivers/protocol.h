@@ -18,6 +18,12 @@ extern "C" {
 #include <stdint.h>
 
 /* --------------------------------------------------------------------------
+ * Ring Buffer Configuration
+ * -------------------------------------------------------------------------- */
+#define RX_BUF_SIZE   512   /* RX ring buffer size in bytes */
+#define LINE_BUF_SIZE 256   /* Max extracted line length */
+
+/* --------------------------------------------------------------------------
  * Error Codes — Parse Phase (1xx)
  * -------------------------------------------------------------------------- */
 #define PROTO_ERR_PARSE_SYNTAX      101   /* Invalid JSON syntax */

@@ -10,6 +10,7 @@
 * microcontroller manufactured by Nanjing Qinheng Microelectronics.
 *******************************************************************************/
 #include "ch32v30x_it.h"
+#include "../Drivers/protocol.h"
 
 /* External references to application globals */
 extern INA226_Dev devs[5];
@@ -19,10 +20,19 @@ volatile uint8_t  fault_triggered = 0;
 volatile uint16_t fault_source_mask = 0;
 volatile uint16_t last_dac_value = 0;
 
+/* External ring buffer variables (defined in Drivers/protocol.c) */
+extern volatile uint8_t  rx_buf[512];
+extern volatile uint16_t rx_head;
+extern volatile uint16_t rx_tail;
+extern volatile uint8_t  rx_overflow;
+extern volatile uint8_t  rx_parity_err;
+extern volatile uint8_t  rx_framing_err;
+
 void NMI_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void HardFault_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void USBFS_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void EXTI4_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void USART2_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 
 /*********************************************************************
  * @fn      NMI_Handler
@@ -104,6 +114,64 @@ void EXTI4_IRQHandler(void)
 
     /* Step 5: Clear EXTI4 pending bit to allow next falling-edge detection */
     EXTI_ClearITPendingBit(EXTI_Line4);
+}
+
+/*********************************************************************
+ * @fn      USART2_IRQHandler
+ *
+ * @brief   USART2 interrupt handler — RXNE-driven ring buffer fill.
+ *          On RXNE: read RDR byte, write to rx_buf at rx_tail with
+ *          wrap-around modulo 512. Discards byte if buffer is full
+ *          (next_tail == rx_head) and sets rx_overflow flag.
+ *          Checks and clears parity, framing, and overrun error flags.
+ *          No blocking calls — all logging deferred to main loop via
+ *          volatile error counters.
+ *
+ * @return  none
+ */
+void USART2_IRQHandler(void)
+{
+    uint8_t byte;
+    uint16_t next_tail;
+
+    /* Receive Data Register Not Empty */
+    if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET)
+    {
+        byte = (uint8_t)USART_ReceiveData(USART2);
+        next_tail = (rx_tail + 1) % RX_BUF_SIZE;
+
+        if (next_tail == rx_head)
+        {
+            /* Buffer full — discard byte */
+            rx_overflow = 1;
+        }
+        else
+        {
+            rx_buf[rx_tail] = byte;
+            rx_tail = next_tail;
+        }
+    }
+
+    /* Parity error — byte already read, discard, count for main loop */
+    if (USART_GetFlagStatus(USART2, USART_FLAG_PE) != RESET)
+    {
+        rx_parity_err++;
+        USART_ClearFlag(USART2, USART_FLAG_PE);
+    }
+
+    /* Framing error — count for main loop diagnostics */
+    if (USART_GetFlagStatus(USART2, USART_FLAG_FE) != RESET)
+    {
+        rx_framing_err++;
+        USART_ClearFlag(USART2, USART_FLAG_FE);
+    }
+
+    /* Overrun error — data lost, flag for main loop */
+    if (USART_GetFlagStatus(USART2, USART_FLAG_ORE) != RESET)
+    {
+        rx_overflow = 1;
+        USART_ClearFlag(USART2, USART_FLAG_ORE);
+    }
 }
 
 

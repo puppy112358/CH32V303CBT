@@ -12,20 +12,14 @@
 #include "debug.h"
 
 /* --------------------------------------------------------------------------
- * Ring Buffer Constants
+ * Ring Buffer Variables (non-static — shared with ch32v30x_it.c ISR)
  * -------------------------------------------------------------------------- */
-#define RX_BUF_SIZE   512
-#define LINE_BUF_SIZE 256
-
-/* --------------------------------------------------------------------------
- * Ring Buffer Static Variables
- * -------------------------------------------------------------------------- */
-static volatile uint8_t  rx_buf[RX_BUF_SIZE];
-static volatile uint16_t rx_head         = 0;
-static volatile uint16_t rx_tail         = 0;
-static volatile uint8_t  rx_overflow     = 0;
-static volatile uint8_t  rx_parity_err   = 0;
-static volatile uint8_t  rx_framing_err  = 0;
+volatile uint8_t  rx_buf[RX_BUF_SIZE];
+volatile uint16_t rx_head         = 0;
+volatile uint16_t rx_tail         = 0;
+volatile uint8_t  rx_overflow     = 0;
+volatile uint8_t  rx_parity_err   = 0;
+volatile uint8_t  rx_framing_err  = 0;
 
 /* --------------------------------------------------------------------------
  * Line Buffer for protocol_poll()
