@@ -21,16 +21,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 控制回路 (CTRL)
 
-- [ ] **CTRL-01**: CV恒压模式 — 软件PID调节DAC输出，控制运放比较器驱动MOS管线性区，维持设定电压
-- [ ] **CTRL-02**: CC恒流模式 — 软件PID调节DAC输出，控制运放比较器驱动MOS管线性区，维持设定电流
-- [ ] **CTRL-03**: PID带anti-windup（反积分饱和）和输出钳位，~100ms调节周期，软启动抑制上电冲击
+- [x] **CTRL-01**: CV恒压模式 — 软件PID调节DAC输出，控制运放比较器驱动MOS管线性区，维持设定电压
+- [x] **CTRL-02**: CC恒流模式 — 软件PID调节DAC输出，控制运放比较器驱动MOS管线性区，维持设定电流
+- [x] **CTRL-03**: PID带anti-windup（反积分饱和）和输出钳位，~100ms调节周期，软启动抑制上电冲击
 
 ### INA226监测与保护 (PROT)
 
-- [ ] **PROT-01**: 4路MOS的INA226配置为过流报警模式（Latch模式），单MOS限流 = 额定电流/4 × 1.3
-- [ ] **PROT-02**: INA226 ALARM引脚EXTI中断触发，ISR读取Alert寄存器清除Latch后置flag，主循环执行关断DAC+模式切换+故障记录
-- [ ] **PROT-03**: 汇总INA226读取总电流/电压/功率，用于数据上报和总功率保护(OPP)
-- [ ] **PROT-04**: INA226校准寄存器定期重写验证，防止校准值静默归零导致电流读数为0
+- [x] **PROT-01**: 4路MOS的INA226配置为过流报警模式（Latch模式），单MOS限流 = 额定电流/4 × 1.3
+- [x] **PROT-02**: INA226 ALARM引脚EXTI中断触发，ISR读取Alert寄存器清除Latch后置flag，主循环执行关断DAC+模式切换+故障记录
+- [x] **PROT-03**: 汇总INA226读取总电流/电压/功率，用于数据上报和总功率保护(OPP)
+- [x] **PROT-04**: INA226校准寄存器定期重写验证，防止校准值静默归零导致电流读数为0
 
 ### WS2812状态指示 (LED)
 
@@ -81,13 +81,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | I2C-01 | Phase 1 | Complete |
 | I2C-02 | Phase 1 | Complete |
 | I2C-03 | Phase 1 | Complete |
-| CTRL-01 | Phase 2 | Pending |
-| CTRL-02 | Phase 2 | Pending |
-| CTRL-03 | Phase 2 | Pending |
-| PROT-01 | Phase 2 | Pending |
-| PROT-02 | Phase 2 | Pending |
-| PROT-03 | Phase 2 | Pending |
-| PROT-04 | Phase 2 | Pending |
+| CTRL-01 | Phase 2 | Complete |
+| CTRL-02 | Phase 2 | Complete |
+| CTRL-03 | Phase 2 | Complete |
+| PROT-01 | Phase 2 | Complete |
+| PROT-02 | Phase 2 | Complete |
+| PROT-03 | Phase 2 | Complete |
+| PROT-04 | Phase 2 | Complete |
 | LED-01 | Phase 4 | Pending |
 | LED-02 | Phase 4 | Pending |
 | FAN-01 | Phase 4 | Pending |
