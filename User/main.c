@@ -23,6 +23,7 @@
 #include "../Drivers/ina226.h"
 #include "../Drivers/dac8571.h"
 #include "../Drivers/pid.h"
+#include "../Drivers/fault.h"
 #include "../Drivers/usb_cdc.h"
 
 /* External references for ISR modules */
@@ -39,14 +40,8 @@ extern INA226_Dev devs[5];
 #define CONTROL_PERIOD_MS   100
 #define SOFTSTART_STEPS     5
 
-/* System mode enumeration */
-typedef enum
-{
-    MODE_IDLE  = 0,
-    MODE_CV    = 1,
-    MODE_CC    = 2,
-    MODE_FAULT = 3
-} SystemMode;
+/* System mode enumeration — defined in Drivers/fault.h */
+/* (SystemMode: MODE_IDLE=0, MODE_CV=1, MODE_CC=2, MODE_FAULT=3) */
 
 /* Global Variable */
 
@@ -278,6 +273,11 @@ int main(void)
            PID_CV_KP, PID_CV_KI, PID_CV_KD,
            PID_CC_KP, PID_CC_KI, PID_CC_KD);
 
+    /* Initialize fault handler */
+    fault_init();
+    printf("Fault handler initialized (rated: %.1fW, max retries: %d)\r\n",
+           RATED_WATTAGE, MAX_RETRY_COUNT);
+
     /* TODO: replace test engage with cJSON command in Phase 3 */
     engage_cv(5.0f);
 
@@ -289,6 +289,8 @@ int main(void)
         float bus_p;
         float mos_i[4];
         uint32_t now;
+        static uint32_t cycle_count = 0;
+        static uint32_t fault_free_ms = 0;
 
         /* 100ms control period gating via SysTick counter */
         now = SysTick->CNT;
@@ -316,14 +318,25 @@ int main(void)
         /* 3. Check fault flag from EXTI4 ISR */
         if (fault_triggered)
         {
-            dac8571_set_output(0);
             system_mode = MODE_FAULT;
+            fault_handler_hw(fault_source_mask);
+            dac8571_set_output(0);
             last_dac_value = 0;
-            printf("[FAULT] ISR triggered, mask=0x%04X\r\n", fault_source_mask);
-            /* Full fault handler in Plan 04 */
+            fault_print_snapshot(&fault_reg, 0, MODE_FAULT);
+            fault_triggered = 0;
         }
 
-        /* 4. State machine dispatch */
+        /* 4. OPP check (D-13): total power over-limit */
+        if (bus_p > RATED_WATTAGE && system_mode != MODE_FAULT)
+        {
+            fault_handler_opp();
+            dac8571_set_output(0);
+            last_dac_value = 0;
+            fault_print_snapshot(&fault_reg, last_dac_value, system_mode);
+            system_mode = MODE_FAULT;
+        }
+
+        /* 5. State machine dispatch */
         if (system_mode == MODE_CV && !fault_triggered)
         {
             float output = pid_compute(&pid_cv, cv_target_voltage, bus_v, 0.1f);
@@ -337,7 +350,57 @@ int main(void)
             dac8571_set_output(last_dac_value);
         }
 
-        /* 5. Print summary */
+        /* 6. Fault state machine: manage auto-retry, cooldown, latch */
+        if (system_mode == MODE_FAULT)
+        {
+            fault_state_machine();
+        }
+
+        /* 7. Retry counter reset (D-03): 30s fault-free → reset to 0 */
+        if (system_mode != MODE_FAULT)
+        {
+            fault_free_ms += CONTROL_PERIOD_MS;
+            if (fault_free_ms >= FAULT_FREE_RESET_MS)
+            {
+                fault_reg.bits.retry_count = 0;
+                fault_free_ms = 0;
+            }
+        }
+        else
+        {
+            fault_free_ms = 0;
+        }
+
+        /* 8. Periodic calibration check (PROT-04): every 10 cycles (1s) */
+        cycle_count++;
+        if (cycle_count >= 10)
+        {
+            uint16_t cal_val;
+            float check_v;
+
+            cycle_count = 0;
+            for (i = 0; i < DEV_COUNT; i++)
+            {
+                cal_val = 0;
+                if (ina226_read_calibration(&devs[i], &cal_val) != I2C_OK)
+                {
+                    continue;
+                }
+                if (cal_val == 0)
+                {
+                    check_v = 0.0f;
+                    if (ina226_get_bus_voltage(&devs[i], &check_v) == I2C_OK
+                        && check_v > 0.1f)
+                    {
+                        printf("[PROT-04] CH%d cal=0 bus=%.2fV — re-initializing\r\n",
+                               devs[i].channel, check_v);
+                        ina226_init(&devs[i]);
+                    }
+                }
+            }
+        }
+
+        /* 9. Print summary */
         printf("Mode:%d V:%.2f I:%.2f P:%.2f DAC:%u MOS:%.2f %.2f %.2f %.2f\r\n",
                system_mode, bus_v, bus_i, bus_p, last_dac_value,
                mos_i[0], mos_i[1], mos_i[2], mos_i[3]);
