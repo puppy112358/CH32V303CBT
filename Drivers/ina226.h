@@ -28,6 +28,7 @@ extern "C" {
 #define INA226_REG_CURRENT       0x04   /* Current register */
 #define INA226_REG_CALIB         0x05   /* Calibration register */
 #define INA226_REG_ALERT         0x06   /* Mask/Enable register (alert) */
+#define INA226_REG_ALERT_LIMIT   0x07   /* Alert limit register */
 
 /* --------------------------------------------------------------------------
  * Alert Register Flag Bits (Mask/Enable register 0x06)
@@ -120,6 +121,22 @@ i2c_status_t ina226_get_power(INA226_Dev *dev, float *power_w);
  * Application code decides what protective action to take.
  * Returns I2C status code from the underlying i2c_util_read call. */
 i2c_status_t ina226_check_alert(INA226_Dev *dev, uint16_t *mask);
+
+/* Write the alert limit register (0x07) for a specific INA226 device.
+ * The alert limit value is written MSB-first with the 3-byte format:
+ * {register_pointer, MSB, LSB}. Returns I2C status code. */
+i2c_status_t ina226_set_alert_limit(INA226_Dev *dev, uint16_t value);
+
+/* Write the mask/enable register (0x06) for a specific INA226 device.
+ * Configures which alert conditions are enabled and latch mode.
+ * Uses the 3-byte write format. Returns I2C status code. */
+i2c_status_t ina226_set_alert_config(INA226_Dev *dev, uint16_t mask);
+
+/* Read the calibration register (0x05) from an INA226 device.
+ * Returns the raw 16-bit calibration value via *cal_value.
+ * Used for calibration re-validation (PROT-04).
+ * Returns I2C status code. */
+i2c_status_t ina226_read_calibration(INA226_Dev *dev, uint16_t *cal_value);
 
 #ifdef __cplusplus
 }
