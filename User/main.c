@@ -295,6 +295,7 @@ int main(void)
         float bus_i;
         float bus_p;
         float mos_i[4];
+        float mos_v[4];
         uint32_t now;
         static uint32_t fault_free_ms = 0;
 
@@ -323,11 +324,13 @@ int main(void)
         ina226_get_current(&devs[4], &bus_i);
         ina226_get_power(&devs[4], &bus_p);
 
-        /* 2. Read 4 MOS channel currents for monitoring */
+        /* 2. Read 4 MOS channel currents and voltages for monitoring */
         for (i = 0; i < 4; i++)
         {
             mos_i[i] = 0.0f;
+            mos_v[i] = 0.0f;
             ina226_get_current(&devs[i], &mos_i[i]);
+            ina226_get_bus_voltage(&devs[i], &mos_v[i]);
         }
 
         /* 3. Check fault flag from EXTI4 ISR */
@@ -370,6 +373,9 @@ int main(void)
         {
             fault_state_machine();
         }
+
+        /* 6.5. Send telemetry packet (Phase 3 — COMM-02) */
+        protocol_send_telemetry(bus_v, bus_i, bus_p, mos_i, mos_v);
 
         /* 7. Retry counter reset (D-03): 30s fault-free → reset to 0 */
         if (system_mode != MODE_FAULT)
