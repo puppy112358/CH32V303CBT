@@ -9,8 +9,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 通信与协议 (COMM)
 
-- [ ] **COMM-01**: 上位机通过UART0发送cJSON格式指令，设置CV恒压值或CC恒流值，波特率>115200bps，奇校验
-- [ ] **COMM-02**: 系统通过UART0以cJSON格式上报测量数据（4路MOS电流/电压+汇总电流/电压/功率），频率10Hz
+- [x] **COMM-01**: 上位机通过UART0发送cJSON格式指令，设置CV恒压值或CC恒流值，波特率>115200bps，奇校验
+- [x] **COMM-02**: 系统通过UART0以cJSON格式上报测量数据（4路MOS电流/电压+汇总电流/电压/功率），频率10Hz
 - [x] **COMM-03**: USB-CDC虚拟串口提供调试日志输出（printf重定向），不影响UART0指令通道
 
 ### I2C设备驱动 (I2C)
@@ -75,8 +75,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COMM-01 | Phase 3 | Pending |
-| COMM-02 | Phase 3 | Pending |
+| COMM-01 | Phase 3 | Complete |
+| COMM-02 | Phase 3 | Complete |
 | COMM-03 | Phase 1 | Complete |
 | I2C-01 | Phase 1 | Complete |
 | I2C-02 | Phase 1 | Complete |

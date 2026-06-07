@@ -8,7 +8,7 @@ Four-phase build delivering a safe, remotely-controllable electronic load: hardw
 
 - [x] **Phase 1: Hardware Foundation** - I2C1 bus validated against all 6 devices, USB-CDC debug output operational (completed 2026-06-05)
 - [x] **Phase 2: Control Loop + Protection** - CV/CC PID control with per-MOSFET over-current protection and soft-start (completed 2026-06-07)
-- [ ] **Phase 3: Communication** - UART0 cJSON remote command protocol and 10Hz telemetry reporting
+- [x] **Phase 3: Communication** - UART0 cJSON remote command protocol and 10Hz telemetry reporting (completed 2026-06-07)
 - [ ] **Phase 4: Status Display + Cooling** - WS2812 LED mode indication and PID-controlled fan cooling
 
 ## Phase Details
@@ -93,5 +93,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Hardware Foundation | 3/3 | Complete    | 2026-06-05 |
 | 2. Control Loop + Protection | 3/3 | Complete    | 2026-06-07 |
-| 3. Communication | 0/0 | Not started | - |
+| 3. Communication | 3/3 | Complete    | 2026-06-07 |
 | 4. Status Display + Cooling | 0/0 | Not started | - |
