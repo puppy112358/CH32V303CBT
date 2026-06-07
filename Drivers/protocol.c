@@ -526,12 +526,79 @@ cleanup:
 /*********************************************************************
  * @fn      protocol_send_telemetry
  *
- * @brief   Assemble and send a telemetry packet over USART2.
- *          Stub — full implementation in Plan 03.
+ * @brief   Assemble and send a cJSON telemetry packet over USART2.
+ *          Contains: 4-channel MOS data in ch[] array, summary data
+ *          in sum{} object, and flat meta fields (seq, uptime, mode,
+ *          fault, dac, retry, temp). Transmitted at 10Hz via the
+ *          100ms control cycle (COMM-02).
+ *
+ * @param   summary_v - Summary bus voltage (volts)
+ * @param   summary_i - Summary total current (amps)
+ * @param   summary_p - Summary total power (watts)
+ * @param   mos_i     - Per-channel MOS currents array [4]
+ * @param   mos_v     - Per-channel MOS bus voltages array [4]
  *
  * @return  none
  */
-void protocol_send_telemetry(void)
+void protocol_send_telemetry(float summary_v, float summary_i, float summary_p,
+                             float mos_i[4], float mos_v[4])
 {
-    /* TODO: Plan 03 */
+    cJSON *root;
+    cJSON *ch_array;
+    cJSON *ch_obj;
+    cJSON *sum_obj;
+    char *json_str;
+    static uint16_t telemetry_seq = 0;
+    uint8_t i;
+
+    root     = NULL;
+    ch_array = NULL;
+    ch_obj   = NULL;
+    sum_obj  = NULL;
+    json_str = NULL;
+
+    /* Reset cJSON arena before assembly — reclaim all memory */
+    cjson_pool_used = 0;
+
+    /* Create root object */
+    root = cJSON_CreateObject();
+    if (root == NULL) return;
+
+    /* Flat meta fields */
+    cJSON_AddNumberToObject(root, "seq", (double)telemetry_seq++);
+    cJSON_AddNumberToObject(root, "uptime", (double)(cycle_count * CONTROL_PERIOD_MS));
+    cJSON_AddStringToObject(root, "mode", system_mode_to_string(system_mode));
+    cJSON_AddNumberToObject(root, "fault", fault_reg.raw);
+    cJSON_AddNumberToObject(root, "dac", last_dac_value);
+    cJSON_AddNumberToObject(root, "retry", fault_reg.bits.retry_count);
+    cJSON_AddNumberToObject(root, "temp", 0.0); /* Placeholder per D-11 */
+
+    /* Build ch[] array — 4 MOS channels */
+    ch_array = cJSON_CreateArray();
+    for (i = 0; i < 4; i++)
+    {
+        ch_obj = cJSON_CreateObject();
+        cJSON_AddNumberToObject(ch_obj, "v", (double)mos_v[i]);
+        cJSON_AddNumberToObject(ch_obj, "i", (double)mos_i[i]);
+        cJSON_AddItemToArray(ch_array, ch_obj);
+    }
+    cJSON_AddItemToObject(root, "ch", ch_array);
+
+    /* Build sum{} object */
+    sum_obj = cJSON_CreateObject();
+    cJSON_AddNumberToObject(sum_obj, "v", (double)summary_v);
+    cJSON_AddNumberToObject(sum_obj, "i", (double)summary_i);
+    cJSON_AddNumberToObject(sum_obj, "p", (double)summary_p);
+    cJSON_AddItemToObject(root, "sum", sum_obj);
+
+    /* Print to compact JSON and transmit */
+    json_str = cJSON_PrintUnformatted(root);
+    if (json_str != NULL)
+    {
+        protocol_send(json_str); /* includes trailing '\n' */
+    }
+
+    /* Cleanup */
+    cJSON_Delete(root);
+    cjson_pool_used = 0; /* Reset arena for next cycle */
 }

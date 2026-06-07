@@ -52,6 +52,7 @@ extern "C" {
 #define HW_MAX_VOLTAGE    30.0f   /* CV range maximum (volts) */
 #define HW_MAX_CURRENT    10.0f   /* CC range maximum (amps) */
 #define FW_VERSION        "1.0.0" /* Firmware version for get_info */
+#define CONTROL_PERIOD_MS 100     /* Main loop cycle period in milliseconds */
 
 /* --------------------------------------------------------------------------
  * Public API
@@ -73,8 +74,12 @@ const char *protocol_poll(void);
 void protocol_send(const char *json_str);
 
 /* Assemble and send a telemetry packet over USART2.
- * Stub — full implementation in Plan 03. */
-void protocol_send_telemetry(void);
+ * Takes current sensor readings as parameters to avoid extern globals.
+ * summary_v/i/p: summary INA226 values for the sum{} object
+ * mos_i[4]: per-channel currents for the ch[] array
+ * mos_v[4]: per-channel bus voltages for the ch[] array */
+void protocol_send_telemetry(float summary_v, float summary_i, float summary_p,
+                             float mos_i[4], float mos_v[4]);
 
 /* Process a received command line: parse JSON, dispatch to handler,
  * send acknowledgment or error response. Called by main loop. */
