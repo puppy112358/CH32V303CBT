@@ -24,6 +24,9 @@
 #include "../Drivers/dac8571.h"
 #include "../Drivers/usb_cdc.h"
 
+/* External references for ISR modules */
+extern INA226_Dev devs[5];
+
 /* Global typedef */
 
 /* Global define */
@@ -41,7 +44,7 @@
  *   0x43: MOS Channel 4 (A1=GND, A0=SCL)
  *   0x44: Summary      (A1=VS,  A0=GND)
  */
-static INA226_Dev devs[DEV_COUNT] = {
+INA226_Dev devs[DEV_COUNT] = {
     {0x40, 0},  /* MOS Channel 1 */
     {0x41, 1},  /* MOS Channel 2 */
     {0x42, 2},  /* MOS Channel 3 */
@@ -91,6 +94,34 @@ int main(void)
             printf("INA226[%d] at 0x%02X init: FAIL (%d)\r\n",
                    i, devs[i].address, init_status);
         }
+    }
+
+    /* Configure PA4 as EXTI4 falling-edge input for INA226 wired-OR ALARM signal */
+    {
+        GPIO_InitTypeDef GPIO_InitStructure = {0};
+        EXTI_InitTypeDef EXTI_InitStructure = {0};
+
+        /* PA4: input with pull-up for active-low wired-OR ALARM */
+        GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;
+        GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+        GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+        GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+        /* Map EXTI line 4 to GPIOA port */
+        GPIO_EXTILineConfig(GPIO_PortSourceGPIOA, GPIO_PinSource4);
+
+        /* EXTI4: interrupt mode, falling-edge trigger */
+        EXTI_InitStructure.EXTI_Line = EXTI_Line4;
+        EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+        EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;
+        EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+        EXTI_Init(&EXTI_InitStructure);
+
+        /* NVIC: EXTI4_IRQn at priority 0x01 (second-highest after system exceptions) */
+        NVIC_SetPriority(EXTI4_IRQn, 0x01);
+        NVIC_EnableIRQ(EXTI4_IRQn);
+
+        printf("EXTI4 on PA4 configured (INA226 ALARM input)\r\n");
     }
 
     /* Initialize DAC8571 and write mid-scale test value */
