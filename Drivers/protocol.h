@@ -47,6 +47,13 @@ extern "C" {
 #define PROTO_ERR_STATE_FAULT       303   /* Fault active, clear first */
 
 /* --------------------------------------------------------------------------
+ * Hardware Limits
+ * -------------------------------------------------------------------------- */
+#define HW_MAX_VOLTAGE    30.0f   /* CV range maximum (volts) */
+#define HW_MAX_CURRENT    10.0f   /* CC range maximum (amps) */
+#define FW_VERSION        "1.0.0" /* Firmware version for get_info */
+
+/* --------------------------------------------------------------------------
  * Public API
  * -------------------------------------------------------------------------- */
 
@@ -68,6 +75,10 @@ void protocol_send(const char *json_str);
 /* Assemble and send a telemetry packet over USART2.
  * Stub — full implementation in Plan 03. */
 void protocol_send_telemetry(void);
+
+/* Process a received command line: parse JSON, dispatch to handler,
+ * send acknowledgment or error response. Called by main loop. */
+void protocol_process_command(const char *line);
 
 #ifdef __cplusplus
 }
