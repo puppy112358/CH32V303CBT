@@ -13,6 +13,8 @@
 #define __CH32V30x_IT_H
 
 #include "debug.h"
+#include "../Drivers/ina226.h"
+#include "../Drivers/dac8571.h"
 
 
 #endif /* __CH32V30x_IT_H */
