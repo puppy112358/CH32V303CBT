@@ -22,6 +22,7 @@
 #include "../Drivers/i2c_util.h"
 #include "../Drivers/ina226.h"
 #include "../Drivers/dac8571.h"
+#include "../Drivers/pid.h"
 #include "../Drivers/usb_cdc.h"
 
 /* External references for ISR modules */
@@ -34,7 +35,35 @@ extern INA226_Dev devs[5];
 /* Number of INA226 devices on I2C1 bus */
 #define DEV_COUNT    5
 
+/* Control loop timing */
+#define CONTROL_PERIOD_MS   100
+#define SOFTSTART_STEPS     5
+
+/* System mode enumeration */
+typedef enum
+{
+    MODE_IDLE  = 0,
+    MODE_CV    = 1,
+    MODE_CC    = 2,
+    MODE_FAULT = 3
+} SystemMode;
+
 /* Global Variable */
+
+/* ISR-to-main-loop fault flags (defined in ch32v30x_it.c) */
+extern volatile uint8_t  fault_triggered;
+extern volatile uint16_t fault_source_mask;
+extern volatile uint16_t last_dac_value;
+
+/* PID instances */
+PID_Instance pid_cv;
+PID_Instance pid_cc;
+
+/* System state */
+SystemMode system_mode = MODE_IDLE;
+float cv_target_voltage = 0.0f;
+float cc_target_current = 0.0f;
+uint32_t last_control_tick = 0;
 
 /*
  * INA226 device array — 5 devices on I2C1 at addresses confirmed by hardware:
@@ -51,6 +80,107 @@ INA226_Dev devs[DEV_COUNT] = {
     {0x43, 3},  /* MOS Channel 4 */
     {0x44, 4},  /* Summary */
 };
+
+/*********************************************************************
+ * @fn      softstart_engage
+ *
+ * @brief   软启动线性 DAC 斜坡: 500ms 内从 0 线性增加到目标值。
+ *          5 步 × 100ms，仅在 IDLE→CV 和 IDLE→CC 转换时调用。
+ *
+ * @param   target_dac - 目标 DAC 值 (0-65535)
+ *
+ * @return  none
+ */
+static void softstart_engage(uint16_t target_dac)
+{
+    uint8_t step;
+    uint16_t dac_out;
+    uint16_t step_size;
+
+    step_size = target_dac / SOFTSTART_STEPS;
+
+    for (step = 0; step < SOFTSTART_STEPS; step++)
+    {
+        if (step == SOFTSTART_STEPS - 1)
+        {
+            dac_out = target_dac;
+        }
+        else
+        {
+            dac_out = (uint16_t)((step + 1) * step_size);
+        }
+
+        dac8571_set_output(dac_out);
+        last_dac_value = dac_out;
+        Delay_Ms(CONTROL_PERIOD_MS);
+    }
+}
+
+/*********************************************************************
+ * @fn      engage_cv
+ *
+ * @brief   切换到恒压模式 (CV)。
+ *          计算初始 PID 输出，执行软启动斜坡，预加载积分项
+ *          以实现无扰切换。
+ *
+ * @param   target_voltage - 目标电压 (V)
+ *
+ * @return  none
+ */
+static void engage_cv(float target_voltage)
+{
+    float bus_v;
+    float output;
+
+    system_mode = MODE_CV;
+    cv_target_voltage = target_voltage;
+
+    /* Compute initial PID output based on current feedback */
+    bus_v = 0.0f;
+    ina226_get_bus_voltage(&devs[4], &bus_v);
+    output = pid_compute(&pid_cv, cv_target_voltage, bus_v, 0.1f);
+
+    /* Soft-start ramp from 0 to PID output */
+    softstart_engage((uint16_t)output);
+
+    /* Pre-load integral term for bumpless transfer */
+    pid_set_integral(&pid_cv, pid_cv.output);
+
+    printf("Engage CV: target=%.2fV DAC=%u\r\n", target_voltage, (uint16_t)pid_cv.output);
+}
+
+/*********************************************************************
+ * @fn      engage_cc
+ *
+ * @brief   切换到恒流模式 (CC)。
+ *          计算初始 PID 输出，执行软启动斜坡，预加载积分项
+ *          以实现无扰切换。
+ *
+ * @param   target_current - 目标电流 (A)
+ *
+ * @return  none
+ */
+static void engage_cc(float target_current)
+{
+    float bus_i;
+    float output;
+
+    system_mode = MODE_CC;
+    cc_target_current = target_current;
+
+    /* Compute initial PID output based on current feedback */
+    bus_i = 0.0f;
+    ina226_get_current(&devs[4], &bus_i);
+    output = pid_compute(&pid_cc, cc_target_current, bus_i, 0.1f);
+
+    /* Soft-start ramp from 0 to PID output */
+    softstart_engage((uint16_t)output);
+
+    /* Pre-load integral term for bumpless transfer */
+    pid_set_integral(&pid_cc, pid_cc.output);
+
+    printf("Engage CC: target=%.2fA DAC=%u\r\n", target_current, (uint16_t)pid_cc.output);
+}
 
 
 /*********************************************************************
@@ -141,78 +271,75 @@ int main(void)
     usb_cdc_init();
     printf("USB-CDC ready — connect USB for virtual COM port\r\n");
 
-    /* Main loop: read all INA226 channels and print via USART1 */
+    /* Initialize PID controllers */
+    pid_init(&pid_cv, PID_CV_KP, PID_CV_KI, PID_CV_KD);
+    pid_init(&pid_cc, PID_CC_KP, PID_CC_KI, PID_CC_KD);
+    printf("PID controller initialized (CV: Kp=%.2f Ki=%.2f Kd=%.2f, CC: Kp=%.2f Ki=%.2f Kd=%.2f)\r\n",
+           PID_CV_KP, PID_CV_KI, PID_CV_KD,
+           PID_CC_KP, PID_CC_KI, PID_CC_KD);
+
+    /* TODO: replace test engage with cJSON command in Phase 3 */
+    engage_cv(5.0f);
+
+    /* Main control loop: 100ms SysTick-gated */
     while (1)
     {
-        for (i = 0; i < DEV_COUNT; i++)
+        float bus_v;
+        float bus_i;
+        float bus_p;
+        float mos_i[4];
+        uint32_t now;
+
+        /* 100ms control period gating via SysTick counter */
+        now = SysTick->CNT;
+        if ((now - last_control_tick) < (SystemCoreClock / 1000 * CONTROL_PERIOD_MS / 1000))
         {
-            float busVoltage;
-            float shuntVoltage;
-            float current;
-            float power;
-            i2c_status_t st;
+            continue;
+        }
+        last_control_tick = now;
 
-            /* Read bus voltage */
-            busVoltage = 0.0f;
-            st = ina226_get_bus_voltage(&devs[i], &busVoltage);
-            if (st == I2C_OK)
-            {
-                printf("CH%d Bus: %.3f V  ", devs[i].channel, busVoltage);
-                usb_printf("CH%d Bus: %.3f V  ", devs[i].channel, busVoltage);
-            }
-            else
-            {
-                printf("CH%d Bus: ERR(%d)  ", devs[i].channel, st);
-                usb_printf("CH%d Bus: ERR(%d)  ", devs[i].channel, st);
-            }
+        /* 1. Read summary INA226 for PID feedback (devs[4] = summary) */
+        bus_v = 0.0f;
+        bus_i = 0.0f;
+        bus_p = 0.0f;
+        ina226_get_bus_voltage(&devs[4], &bus_v);
+        ina226_get_current(&devs[4], &bus_i);
+        ina226_get_power(&devs[4], &bus_p);
 
-            /* Read shunt voltage */
-            shuntVoltage = 0.0f;
-            st = ina226_get_shunt_voltage(&devs[i], &shuntVoltage);
-            if (st == I2C_OK)
-            {
-                printf("Shunt: %.3f mV  ", shuntVoltage);
-                usb_printf("Shunt: %.3f mV  ", shuntVoltage);
-            }
-            else
-            {
-                printf("Shunt: ERR(%d)  ", st);
-                usb_printf("Shunt: ERR(%d)  ", st);
-            }
-
-            /* Read current */
-            current = 0.0f;
-            st = ina226_get_current(&devs[i], &current);
-            if (st == I2C_OK)
-            {
-                printf("Cur: %.3f A  ", current);
-                usb_printf("Cur: %.3f A  ", current);
-            }
-            else
-            {
-                printf("Cur: ERR(%d)  ", st);
-                usb_printf("Cur: ERR(%d)  ", st);
-            }
-
-            /* Read power */
-            power = 0.0f;
-            st = ina226_get_power(&devs[i], &power);
-            if (st == I2C_OK)
-            {
-                printf("Pwr: %.3f W\r\n", power);
-                usb_printf("Pwr: %.3f W\r\n", power);
-            }
-            else
-            {
-                printf("Pwr: ERR(%d)\r\n", st);
-                usb_printf("Pwr: ERR(%d)\r\n", st);
-            }
+        /* 2. Read 4 MOS channel currents for monitoring */
+        for (i = 0; i < 4; i++)
+        {
+            mos_i[i] = 0.0f;
+            ina226_get_current(&devs[i], &mos_i[i]);
         }
 
-        /* DAC status reminder: mid-scale value is active */
-        printf("DAC=0x8000 (mid-scale)\r\n\r\n");
-        usb_printf("DAC=0x8000 (mid-scale)\r\n\r\n");
+        /* 3. Check fault flag from EXTI4 ISR */
+        if (fault_triggered)
+        {
+            dac8571_set_output(0);
+            system_mode = MODE_FAULT;
+            last_dac_value = 0;
+            printf("[FAULT] ISR triggered, mask=0x%04X\r\n", fault_source_mask);
+            /* Full fault handler in Plan 04 */
+        }
 
-        Delay_Ms(500);
+        /* 4. State machine dispatch */
+        if (system_mode == MODE_CV && !fault_triggered)
+        {
+            float output = pid_compute(&pid_cv, cv_target_voltage, bus_v, 0.1f);
+            last_dac_value = (uint16_t)output;
+            dac8571_set_output(last_dac_value);
+        }
+        else if (system_mode == MODE_CC && !fault_triggered)
+        {
+            float output = pid_compute(&pid_cc, cc_target_current, bus_i, 0.1f);
+            last_dac_value = (uint16_t)output;
+            dac8571_set_output(last_dac_value);
+        }
+
+        /* 5. Print summary */
+        printf("Mode:%d V:%.2f I:%.2f P:%.2f DAC:%u MOS:%.2f %.2f %.2f %.2f\r\n",
+               system_mode, bus_v, bus_i, bus_p, last_dac_value,
+               mos_i[0], mos_i[1], mos_i[2], mos_i[3]);
     }
 }
