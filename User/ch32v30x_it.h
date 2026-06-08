@@ -17,6 +17,7 @@
 #include "../Drivers/dac8571.h"
 #include "../Drivers/protocol.h"
 #include "../Drivers/ws2812.h"
+#include "../Drivers/fan.h"
 
 
 #endif /* __CH32V30x_IT_H */

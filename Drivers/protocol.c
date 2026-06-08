@@ -26,6 +26,10 @@ extern FaultRegister fault_reg;
 extern void engage_cv(float target_voltage);
 extern void engage_cc(float target_current);
 
+/* Fan status (from Drivers/fan.c) — for telemetry */
+extern volatile uint16_t fan_rpm;
+extern volatile uint8_t  fan_stall;
+
 /* --------------------------------------------------------------------------
  * cJSON Arena Allocator (4 KB static pool)
  * -------------------------------------------------------------------------- */
@@ -573,6 +577,8 @@ void protocol_send_telemetry(float summary_v, float summary_i, float summary_p,
     cJSON_AddNumberToObject(root, "dac", last_dac_value);
     cJSON_AddNumberToObject(root, "retry", fault_reg.bits.retry_count);
     cJSON_AddNumberToObject(root, "temp", (double)heatsink_temp_c); /* NTC heatsink temperature — Phase 4 D-04 */
+    cJSON_AddNumberToObject(root, "fan_rpm", (double)fan_rpm);   /* Fan RPM — Phase 4 FAN-02 */
+    cJSON_AddNumberToObject(root, "fan_stall", (double)fan_stall); /* Fan stall flag — Phase 4 FAN-02 */
 
     /* Build ch[] array — 4 MOS channels */
     ch_array = cJSON_CreateArray();

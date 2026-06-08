@@ -66,7 +66,8 @@ typedef enum
  *   bits 8-11: retry_count       — current retry attempt (0-15, max 5 used)
  *   bit    12: latched            — permanent latch (1 = no auto-recovery)
  *   bit    13: auto_recovery      — 0=disabled (latched), 1=auto-retry enabled
- *   bits 14-15: reserved
+ *   bit    14: fan_stall_flag     — Phase 4 soft fan stall warning (0=normal, 1=stalled)
+ *   bit    15: reserved
  * -------------------------------------------------------------------------- */
 typedef union
 {
@@ -79,7 +80,8 @@ typedef union
         uint16_t retry_count      : 4;   /* Bits 8-11: 0-15 */
         uint16_t latched          : 1;   /* Bit 12: permanent latch */
         uint16_t auto_recovery    : 1;   /* Bit 13: auto-retry enabled */
-        uint16_t reserved2        : 2;   /* Bits 14-15 */
+        uint16_t fan_stall_flag   : 1;   /* Bit 14: Phase 4 fan stall warning */
+        uint16_t reserved2        : 1;   /* Bit 15 */
     } bits;
 } FaultRegister;
 

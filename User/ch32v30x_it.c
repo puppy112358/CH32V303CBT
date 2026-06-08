@@ -35,6 +35,7 @@ void USBFS_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void EXTI4_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void USART2_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void DMA1_Channel5_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void TIM3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 
 /*********************************************************************
  * @fn      NMI_Handler
@@ -208,6 +209,47 @@ void DMA1_Channel5_IRQHandler(void)
 
         /* Clear busy flag — allows next ws2812_set_color() call to proceed */
         ws2812_dma_busy = 0;
+    }
+}
+
+/*********************************************************************
+ * @fn      TIM3_IRQHandler
+ *
+ * @brief   TIM3 interrupt handler for CH2 input capture (tachometer).
+ *
+ *          On CC2 rising-edge capture event: reads the captured counter
+ *          value, computes the period from the previous capture (32-bit
+ *          subtraction handles 16-bit counter wraparound), updates
+ *          global tachometer state, and clears the CC2 flag.
+ *
+ *          Fast-path ISR: check flag → read capture → compute delta →
+ *          update globals → clear flag. No printf, no blocking calls.
+ *
+ * @return  none
+ */
+void TIM3_IRQHandler(void)
+{
+    uint32_t capture;
+    uint32_t period;
+
+    /* Check CH2 capture interrupt (tachometer rising edge) */
+    if (TIM_GetITStatus(TIM3, TIM_IT_CC2) != RESET)
+    {
+        /* Read captured counter value (TIM3 running at 1MHz) */
+        capture = TIM_GetCapture2(TIM3);
+
+        /* Clear interrupt pending bit */
+        TIM_ClearITPendingBit(TIM3, TIM_IT_CC2);
+
+        /* Compute period from previous capture.
+         * 32-bit subtraction naturally handles 16-bit counter wrap. */
+        period = capture - tacho_last_capture;
+
+        /* Update global tachometer state */
+        tacho_period_ticks = period;
+        tacho_last_capture = capture;
+        tacho_valid        = 1;
+        tacho_timeout      = 0;
     }
 }
 

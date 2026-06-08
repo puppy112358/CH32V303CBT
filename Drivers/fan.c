@@ -11,6 +11,7 @@
 *******************************************************************************/
 #include "../Drivers/fan.h"
 #include "../Drivers/temp_sensor.h"
+#include "../Drivers/fault.h"
 #include "debug.h"
 
 /* --------------------------------------------------------------------------
@@ -163,6 +164,7 @@ void fan_update(float current_temp_c)
                 printf("[FAN] STALL DETECTED — duty=%d%% RPM=0\r\n", fan_duty_pct);
             }
             fan_stall = 1;
+            fault_reg.bits.fan_stall_flag = 1;
         }
     }
     else
@@ -173,6 +175,7 @@ void fan_update(float current_temp_c)
         }
         stall_cycle_counter = 0;
         fan_stall = 0;
+        fault_reg.bits.fan_stall_flag = 0;
     }
 }
 
