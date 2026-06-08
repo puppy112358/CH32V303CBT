@@ -11,6 +11,7 @@
 #include "../Drivers/protocol.h"
 #include "debug.h"
 #include "../Drivers/cjson/cJSON.h"
+#include "../Drivers/temp_sensor.h"
 #include <string.h>
 #include <math.h>
 
@@ -571,7 +572,7 @@ void protocol_send_telemetry(float summary_v, float summary_i, float summary_p,
     cJSON_AddNumberToObject(root, "fault", fault_reg.raw);
     cJSON_AddNumberToObject(root, "dac", last_dac_value);
     cJSON_AddNumberToObject(root, "retry", fault_reg.bits.retry_count);
-    cJSON_AddNumberToObject(root, "temp", 0.0); /* Placeholder per D-11 */
+    cJSON_AddNumberToObject(root, "temp", (double)heatsink_temp_c); /* NTC heatsink temperature — Phase 4 D-04 */
 
     /* Build ch[] array — 4 MOS channels */
     ch_array = cJSON_CreateArray();

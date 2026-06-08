@@ -25,6 +25,7 @@
 #include "../Drivers/pid.h"
 #include "../Drivers/fault.h"
 #include "../Drivers/ws2812.h"
+#include "../Drivers/temp_sensor.h"
 #include "../Drivers/protocol.h"
 #include "../Drivers/usb_cdc.h"
 
@@ -51,6 +52,9 @@ extern INA226_Dev devs[5];
 extern volatile uint8_t  fault_triggered;
 extern volatile uint16_t fault_source_mask;
 extern volatile uint16_t last_dac_value;
+
+/* NTC temperature reading (defined in Drivers/temp_sensor.c) */
+extern volatile float heatsink_temp_c;
 
 /* PID instances */
 PID_Instance pid_cv;
@@ -289,6 +293,9 @@ int main(void)
     /* Initialize WS2812 LED driver (TIM2 CH1 PA0 PWM + DMA1 CH5) */
     ws2812_init();
 
+    /* Initialize NTC temperature sensor (ADC1 CH5 PA5) */
+    temp_sensor_init();
+
     /* Phase 2 test engage replaced by cJSON commands in Phase 3 */
     /* System now starts in MODE_IDLE and waits for commands via USART2 */
 
@@ -336,6 +343,9 @@ int main(void)
             ina226_get_current(&devs[i], &mos_i[i]);
             ina226_get_bus_voltage(&devs[i], &mos_v[i]);
         }
+
+        /* 2.5. Read NTC heatsink temperature (for telemetry + fan control) */
+        temp_sensor_read();
 
         /* 3. Check fault flag from EXTI4 ISR */
         if (fault_triggered)
