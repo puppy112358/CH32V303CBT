@@ -34,14 +34,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### WS2812状态指示 (LED)
 
-- [ ] **LED-01**: TIM2 CH1 PWM + DMA驱动WS2812灯带，800kHz位速率，零CPU开销
-- [ ] **LED-02**: 灯带颜色指示工作状态（恒压模式/恒流模式/故障保护/待机等）
+- [x] **LED-01**: TIM2 CH1 PWM + DMA驱动WS2812灯带，800kHz位速率，零CPU开销
+- [x] **LED-02**: 灯带颜色指示工作状态（恒压模式/恒流模式/故障保护/待机等）
 
 ### 风扇控制 (FAN)
 
-- [ ] **FAN-01**: TIM PWM输出驱动风扇调速
-- [ ] **FAN-02**: 风扇转速反馈（测速信号输入捕获）采集RPM
-- [ ] **FAN-03**: 位置式PID控制风扇转速（根据温度/功率调节），带anti-windup
+- [x] **FAN-01**: TIM PWM输出驱动风扇调速
+- [x] **FAN-02**: 风扇转速反馈（测速信号输入捕获）采集RPM
+- [x] **FAN-03**: 位置式PID控制风扇转速（根据温度/功率调节），带anti-windup
 
 ## v2 Requirements
 
@@ -88,11 +88,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROT-02 | Phase 2 | Complete |
 | PROT-03 | Phase 2 | Complete |
 | PROT-04 | Phase 2 | Complete |
-| LED-01 | Phase 4 | Pending |
-| LED-02 | Phase 4 | Pending |
-| FAN-01 | Phase 4 | Pending |
-| FAN-02 | Phase 4 | Pending |
-| FAN-03 | Phase 4 | Pending |
+| LED-01 | Phase 4 | Complete |
+| LED-02 | Phase 4 | Complete |
+| FAN-01 | Phase 4 | Complete |
+| FAN-02 | Phase 4 | Complete |
+| FAN-03 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 18 total

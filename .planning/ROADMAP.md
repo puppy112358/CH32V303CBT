@@ -94,4 +94,4 @@ Plans:
 | 1. Hardware Foundation | 3/3 | Complete    | 2026-06-05 |
 | 2. Control Loop + Protection | 3/3 | Complete    | 2026-06-07 |
 | 3. Communication | 3/3 | Complete    | 2026-06-07 |
-| 4. Status Display + Cooling | 3/3 | Complete   | 2026-06-08 |
+| 4. Status Display + Cooling | 3/3 | Complete    | 2026-06-08 |
