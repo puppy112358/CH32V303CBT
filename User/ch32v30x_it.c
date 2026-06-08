@@ -11,6 +11,7 @@
 *******************************************************************************/
 #include "ch32v30x_it.h"
 #include "../Drivers/protocol.h"
+#include "../Drivers/ws2812.h"
 
 /* External references to application globals */
 extern INA226_Dev devs[5];
@@ -33,6 +34,7 @@ void HardFault_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void USBFS_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void EXTI4_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void USART2_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void DMA1_Channel5_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 
 /*********************************************************************
  * @fn      NMI_Handler
@@ -171,6 +173,41 @@ void USART2_IRQHandler(void)
     {
         rx_overflow = 1;
         USART_ClearFlag(USART2, USART_FLAG_ORE);
+    }
+}
+
+/*********************************************************************
+ * @fn      DMA1_Channel5_IRQHandler
+ *
+ * @brief   DMA1 Channel 5 Transfer Complete interrupt handler.
+ *
+ *          Fires when 48-byte WS2812 bitstream transfer to TIM2 CH1 CCR
+ *          completes. Disables DMA channel and TIM2 to stop PWM output
+ *          (PA0 goes low → WS2812 RESET condition >50μs guaranteed by
+ *          100ms control cycle gap). Clears ws2812_dma_busy flag so
+ *          next update can proceed.
+ *
+ *          Fast-path ISR: check flag, clear flag, disable HW, clear busy.
+ *          No printf, no blocking calls.
+ *
+ * @return  none
+ */
+void DMA1_Channel5_IRQHandler(void)
+{
+    /* Check DMA1 Channel 5 Transfer Complete flag */
+    if (DMA_GetITStatus(DMA1_IT_TC5) != RESET)
+    {
+        /* Clear interrupt pending bit */
+        DMA_ClearITPendingBit(DMA1_IT_TC5);
+
+        /* Disable DMA channel — stop further transfers */
+        DMA_Cmd(DMA1_Channel5, DISABLE);
+
+        /* Disable TIM2 PWM — output goes low → RESET condition for WS2812 */
+        TIM_Cmd(TIM2, DISABLE);
+
+        /* Clear busy flag — allows next ws2812_set_color() call to proceed */
+        ws2812_dma_busy = 0;
     }
 }
 
