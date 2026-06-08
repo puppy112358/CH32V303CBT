@@ -24,6 +24,7 @@
 #include "../Drivers/dac8571.h"
 #include "../Drivers/pid.h"
 #include "../Drivers/fault.h"
+#include "../Drivers/ws2812.h"
 #include "../Drivers/protocol.h"
 #include "../Drivers/usb_cdc.h"
 
@@ -285,6 +286,9 @@ int main(void)
     printf("Fault handler initialized (rated: %.1fW, max retries: %d)\r\n",
            RATED_WATTAGE, MAX_RETRY_COUNT);
 
+    /* Initialize WS2812 LED driver (TIM2 CH1 PA0 PWM + DMA1 CH5) */
+    ws2812_init();
+
     /* Phase 2 test engage replaced by cJSON commands in Phase 3 */
     /* System now starts in MODE_IDLE and waits for commands via USART2 */
 
@@ -367,6 +371,9 @@ int main(void)
             last_dac_value = (uint16_t)output;
             dac8571_set_output(last_dac_value);
         }
+
+        /* 5.5. Update WS2812 LED color if system mode changed */
+        ws2812_update_from_mode(system_mode);
 
         /* 6. Fault state machine: manage auto-retry, cooldown, latch */
         if (system_mode == MODE_FAULT)
