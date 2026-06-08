@@ -26,6 +26,7 @@
 #include "../Drivers/fault.h"
 #include "../Drivers/ws2812.h"
 #include "../Drivers/temp_sensor.h"
+#include "../Drivers/fan.h"
 #include "../Drivers/protocol.h"
 #include "../Drivers/usb_cdc.h"
 
@@ -55,6 +56,10 @@ extern volatile uint16_t last_dac_value;
 
 /* NTC temperature reading (defined in Drivers/temp_sensor.c) */
 extern volatile float heatsink_temp_c;
+
+/* Fan status (defined in Drivers/fan.c) */
+extern volatile uint16_t fan_rpm;
+extern volatile uint8_t  fan_stall;
 
 /* PID instances */
 PID_Instance pid_cv;
@@ -296,6 +301,9 @@ int main(void)
     /* Initialize NTC temperature sensor (ADC1 CH5 PA5) */
     temp_sensor_init();
 
+    /* Initialize fan controller (TIM3 PA6 PWM 25kHz + PA7 tacho + PID 50°C) */
+    fan_init();
+
     /* Phase 2 test engage replaced by cJSON commands in Phase 3 */
     /* System now starts in MODE_IDLE and waits for commands via USART2 */
 
@@ -384,6 +392,9 @@ int main(void)
 
         /* 5.5. Update WS2812 LED color if system mode changed */
         ws2812_update_from_mode(system_mode);
+
+        /* 5.6. Compute fan PID + update PWM duty + read RPM + check stall */
+        fan_update(heatsink_temp_c);
 
         /* 6. Fault state machine: manage auto-retry, cooldown, latch */
         if (system_mode == MODE_FAULT)
