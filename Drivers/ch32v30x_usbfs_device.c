@@ -33,6 +33,7 @@ volatile uint8_t  USBFS_DevEnumStatus;
 /* Endpoint Buffer */
 __attribute__ ((aligned(4))) uint8_t USBFS_EP0_Buf[ DEF_USBD_UEP0_SIZE ];
 __attribute__ ((aligned(4))) uint8_t USBFS_EP1_Buf[ DEF_USBD_ENDP1_SIZE ];
+__attribute__ ((aligned(4))) uint8_t USBFS_EP2_Buf[ DEF_USBD_ENDP2_SIZE ];
 __attribute__ ((aligned(4))) uint8_t USBFS_EP3_Buf[ DEF_USBD_ENDP3_SIZE ];
 
 /* USB IN Endpoint Busy Flag */
@@ -97,15 +98,16 @@ void USBFS_Device_Endp_Init( void )
     uint8_t i;
 
     USBFSD->UEP4_1_MOD = USBFS_UEP1_TX_EN;
-    USBFSD->UEP2_3_MOD = USBFS_UEP3_TX_EN;
+    USBFSD->UEP2_3_MOD = USBFS_UEP2_RX_EN|USBFS_UEP3_TX_EN;
 
     USBFSD->UEP0_DMA = (uint32_t)USBFS_EP0_Buf;
 
     USBFSD->UEP1_DMA = (uint32_t)USBFS_EP1_Buf;
-    USBFSD->UEP2_DMA = 0;
+    USBFSD->UEP2_DMA = (uint32_t)USBFS_EP2_Buf;
     USBFSD->UEP3_DMA = (uint32_t)USBFS_EP3_Buf;
 
     USBFSD->UEP0_RX_CTRL = USBFS_UEP_R_RES_ACK;
+    USBFSD->UEP2_RX_CTRL = USBFS_UEP_R_RES_ACK;
 
     USBFSD->UEP1_TX_LEN = 0;
     USBFSD->UEP3_TX_LEN = 0;
@@ -371,6 +373,13 @@ void USBFS_IRQHandler( void )
                         }
                         break;
 
+                    /* end-point 2 data out interrupt */
+                    case USBFS_UIS_TOKEN_OUT | DEF_UEP2:
+                        USBFSD->UEP2_RX_CTRL ^= USBFS_UEP_R_TOG;
+                        /* Data received from host — ACK and discard (debug-only CDC) */
+                        USBFS_Endp_Busy[ DEF_UEP2 ] = 0;
+                        break;
+
                     default:
                         break;
                 }
@@ -542,6 +551,11 @@ void USBFS_IRQHandler( void )
                                             USBFSD->UEP1_TX_CTRL = USBFS_UEP_T_RES_NAK;
                                             break;
 
+                                        case ( DEF_UEP_OUT | DEF_UEP2 ):
+                                            /* Set End-point 2 OUT ACK */
+                                            USBFSD->UEP2_RX_CTRL = USBFS_UEP_R_RES_ACK;
+                                            break;
+
                                         case ( DEF_UEP_IN | DEF_UEP3 ):
                                             /* Set End-point 3 IN NAK */
                                             USBFSD->UEP3_TX_CTRL = USBFS_UEP_T_RES_NAK;
@@ -598,6 +612,11 @@ void USBFS_IRQHandler( void )
                                             USBFSD->UEP1_TX_CTRL = ( USBFSD->UEP1_TX_CTRL & ~USBFS_UEP_T_RES_MASK ) | USBFS_UEP_T_RES_STALL;
                                             break;
 
+                                        case ( DEF_UEP_OUT | DEF_UEP2 ):
+                                            /* Set End-point 2 OUT STALL */
+                                            USBFSD->UEP2_RX_CTRL = ( USBFSD->UEP2_RX_CTRL & ~USBFS_UEP_R_RES_MASK ) | USBFS_UEP_R_RES_STALL;
+                                            break;
+
                                         case ( DEF_UEP_IN | DEF_UEP3 ):
                                             /* Set End-point 3 IN STALL */
                                             USBFSD->UEP3_TX_CTRL = ( USBFSD->UEP3_TX_CTRL & ~USBFS_UEP_T_RES_MASK ) | USBFS_UEP_T_RES_STALL;
@@ -648,6 +667,13 @@ void USBFS_IRQHandler( void )
                                 {
                                     case ( DEF_UEP_IN | DEF_UEP1 ):
                                         if( ( (USBFSD->UEP1_TX_CTRL) & USBFS_UEP_T_RES_MASK ) == USBFS_UEP_T_RES_STALL )
+                                        {
+                                            USBFS_EP0_Buf[ 0 ] = 0x01;
+                                        }
+                                        break;
+
+                                    case ( DEF_UEP_OUT | DEF_UEP2 ):
+                                        if( ( (USBFSD->UEP2_RX_CTRL) & USBFS_UEP_R_RES_MASK ) == USBFS_UEP_R_RES_STALL )
                                         {
                                             USBFS_EP0_Buf[ 0 ] = 0x01;
                                         }

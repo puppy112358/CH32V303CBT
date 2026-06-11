@@ -29,6 +29,7 @@ extern void engage_cc(float target_current);
 /* Fan status (from Drivers/fan.c) — for telemetry */
 extern volatile uint16_t fan_rpm;
 extern volatile uint8_t  fan_stall;
+extern uint32_t cycle_count;
 
 /* --------------------------------------------------------------------------
  * cJSON Arena Allocator (4 KB static pool)

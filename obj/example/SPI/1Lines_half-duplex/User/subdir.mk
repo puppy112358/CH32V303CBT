@@ -1,0 +1,35 @@
+################################################################################
+# MRS Version: 2.4.0
+# Automatically-generated file. Do not edit!
+################################################################################
+
+# Add inputs and outputs from these tool invocations to the build variables 
+C_SRCS += \
+../example/SPI/1Lines_half-duplex/User/ch32v30x_it.c \
+../example/SPI/1Lines_half-duplex/User/main.c \
+../example/SPI/1Lines_half-duplex/User/system_ch32v30x.c 
+
+C_DEPS += \
+./example/SPI/1Lines_half-duplex/User/ch32v30x_it.d \
+./example/SPI/1Lines_half-duplex/User/main.d \
+./example/SPI/1Lines_half-duplex/User/system_ch32v30x.d 
+
+OBJS += \
+./example/SPI/1Lines_half-duplex/User/ch32v30x_it.o \
+./example/SPI/1Lines_half-duplex/User/main.o \
+./example/SPI/1Lines_half-duplex/User/system_ch32v30x.o 
+
+DIR_OBJS += \
+./example/SPI/1Lines_half-duplex/User/*.o \
+
+DIR_DEPS += \
+./example/SPI/1Lines_half-duplex/User/*.d \
+
+DIR_EXPANDS += \
+./example/SPI/1Lines_half-duplex/User/*.234r.expand \
+
+
+# Each subdirectory must supply rules for building sources it contributes
+example/SPI/1Lines_half-duplex/User/%.o: ../example/SPI/1Lines_half-duplex/User/%.c
+	@	riscv-none-embed-gcc -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -I"c:/GitProject/CH32V303CBT/Debug" -I"c:/GitProject/CH32V303CBT/Core" -I"c:/GitProject/CH32V303CBT/User" -I"c:/GitProject/CH32V303CBT/Peripheral/inc" -std=gnu99 -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -c -o "$@" "$<"
+

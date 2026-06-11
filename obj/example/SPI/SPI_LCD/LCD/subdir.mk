@@ -1,0 +1,35 @@
+################################################################################
+# MRS Version: 2.4.0
+# Automatically-generated file. Do not edit!
+################################################################################
+
+# Add inputs and outputs from these tool invocations to the build variables 
+C_SRCS += \
+../example/SPI/SPI_LCD/LCD/flash.c \
+../example/SPI/SPI_LCD/LCD/lcd.c \
+../example/SPI/SPI_LCD/LCD/spi.c 
+
+C_DEPS += \
+./example/SPI/SPI_LCD/LCD/flash.d \
+./example/SPI/SPI_LCD/LCD/lcd.d \
+./example/SPI/SPI_LCD/LCD/spi.d 
+
+OBJS += \
+./example/SPI/SPI_LCD/LCD/flash.o \
+./example/SPI/SPI_LCD/LCD/lcd.o \
+./example/SPI/SPI_LCD/LCD/spi.o 
+
+DIR_OBJS += \
+./example/SPI/SPI_LCD/LCD/*.o \
+
+DIR_DEPS += \
+./example/SPI/SPI_LCD/LCD/*.d \
+
+DIR_EXPANDS += \
+./example/SPI/SPI_LCD/LCD/*.234r.expand \
+
+
+# Each subdirectory must supply rules for building sources it contributes
+example/SPI/SPI_LCD/LCD/%.o: ../example/SPI/SPI_LCD/LCD/%.c
+	@	riscv-none-embed-gcc -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -I"c:/GitProject/CH32V303CBT/Debug" -I"c:/GitProject/CH32V303CBT/Core" -I"c:/GitProject/CH32V303CBT/User" -I"c:/GitProject/CH32V303CBT/Peripheral/inc" -std=gnu99 -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@)" -c -o "$@" "$<"
+

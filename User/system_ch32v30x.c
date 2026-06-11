@@ -137,7 +137,7 @@ void SystemInit (void)
  */
 void SystemCoreClockUpdate (void)
 {
-  uint32_t tmp = 0, pllmull = 0, pllsource = 0;
+  uint32_t tmp = 0x04, pllmull = 0, pllsource = 0;
   uint8_t Pll_6_5 = 0;
 
 #ifdef CH32V30x_D8C

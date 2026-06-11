@@ -32,11 +32,11 @@ const uint8_t  MyDevDescr[] =
     0x01,       // bNumConfigurations 1
 };
 
-/* Configuration Descriptor — simplified CDC ACM (no EP2 OUT) */
+/* Configuration Descriptor — CDC ACM with EP2 OUT (bulk) for host-to-device data */
 const uint8_t  MyCfgDescr[] =
 {
-    /* Configure descriptor: length=9, total_len=0x003C (60 bytes), 2 interfaces */
-    0x09, 0x02, 0x3C, 0x00, 0x02, 0x01, 0x00, 0x80, 0x32,
+    /* Configure descriptor: length=9, total_len=0x0043 (67 bytes), 2 interfaces */
+    0x09, 0x02, 0x43, 0x00, 0x02, 0x01, 0x00, 0x80, 0x32,
 
     /* Interface 0 (CDC Communication) descriptor */
     0x09, 0x04, 0x00, 0x00, 0x01, 0x02, 0x02, 0x01,  0x00,
@@ -52,8 +52,11 @@ const uint8_t  MyCfgDescr[] =
     /* Interrupt upload endpoint descriptor (EP1 IN) */
     0x07, 0x05, 0x81, 0x03, (uint8_t)DEF_USBD_ENDP1_SIZE, (uint8_t)( DEF_USBD_ENDP1_SIZE >> 8 ), 0x01,
 
-    /* Interface 1 (Data interface) descriptor — bNumEndpoints=1 (EP3 only, EP2 removed) */
-    0x09, 0x04, 0x01, 0x00, 0x01, 0x0A, 0x00, 0x00, 0x00,
+    /* Interface 1 (Data interface) descriptor — bNumEndpoints=2 (EP2 OUT + EP3 IN) */
+    0x09, 0x04, 0x01, 0x00, 0x02, 0x0A, 0x00, 0x00, 0x00,
+
+    /* Endpoint descriptor — EP2 OUT (bulk) */
+    0x07, 0x05, 0x02, 0x02, (uint8_t)DEF_USBD_ENDP2_SIZE, (uint8_t)( DEF_USBD_ENDP2_SIZE >> 8 ), 0x00,
 
     /* Endpoint descriptor — EP3 IN (bulk) */
     0x07, 0x05, 0x83, 0x02, (uint8_t)DEF_USBD_ENDP3_SIZE, (uint8_t)( DEF_USBD_ENDP3_SIZE >> 8 ), 0x00,

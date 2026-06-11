@@ -44,7 +44,7 @@ extern INA226_Dev devs[5];
 #define CONTROL_PERIOD_MS   100
 #define SOFTSTART_STEPS     5
 
-/* System mode enumeration — defined in Drivers/fault.h */
+/* System mode enumeration �? defined in Drivers/fault.h */
 /* (SystemMode: MODE_IDLE=0, MODE_CV=1, MODE_CC=2, MODE_FAULT=3) */
 
 /* Global Variable */
@@ -75,7 +75,7 @@ uint32_t last_control_tick = 0;
 uint32_t cycle_count = 0;
 
 /*
- * INA226 device array — 5 devices on I2C1 at addresses confirmed by hardware:
+ * INA226 device array �? 5 devices on I2C1 at addresses confirmed by hardware:
  *   0x40: MOS Channel 1 (A1=GND, A0=GND)
  *   0x41: MOS Channel 2 (A1=GND, A0=VS)
  *   0x42: MOS Channel 3 (A1=GND, A0=SDA)
@@ -93,10 +93,10 @@ INA226_Dev devs[DEV_COUNT] = {
 /*********************************************************************
  * @fn      softstart_engage
  *
- * @brief   软启动线性 DAC 斜坡: 500ms 内从 0 线性增加到目标值。
- *          5 步 × 100ms，仅在 IDLE→CV 和 IDLE→CC 转换时调用。
+ * @brief   软启动线�? DAC 斜坡: 500ms 内从 0 线性增加到目标值�?
+ *          5 �? × 100ms，仅�? IDLE→CV �? IDLE→CC 转换时调用�?
  *
- * @param   target_dac - 目标 DAC 值 (0-65535)
+ * @param   target_dac - 目标 DAC �? (0-65535)
  *
  * @return  none
  */
@@ -128,15 +128,15 @@ static void softstart_engage(uint16_t target_dac)
 /*********************************************************************
  * @fn      engage_cv
  *
- * @brief   切换到恒压模式 (CV)。
- *          计算初始 PID 输出，执行软启动斜坡，预加载积分项
- *          以实现无扰切换。
+ * @brief   切换到恒压模�? (CV)�?
+ *          计算初始 PID 输出，执行软启动斜坡，预加载积分�?
+ *          以实现无扰切捀�?
  *
  * @param   target_voltage - 目标电压 (V)
  *
  * @return  none
  */
-static void engage_cv(float target_voltage)
+void engage_cv(float target_voltage)
 {
     float bus_v;
     float output;
@@ -161,15 +161,15 @@ static void engage_cv(float target_voltage)
 /*********************************************************************
  * @fn      engage_cc
  *
- * @brief   切换到恒流模式 (CC)。
- *          计算初始 PID 输出，执行软启动斜坡，预加载积分项
- *          以实现无扰切换。
+ * @brief   切换到恒流模�? (CC)�?
+ *          计算初始 PID 输出，执行软启动斜坡，预加载积分�?
+ *          以实现无扰切捀�?
  *
  * @param   target_current - 目标电流 (A)
  *
  * @return  none
  */
-static void engage_cc(float target_current)
+void engage_cc(float target_current)
 {
     float bus_i;
     float output;
@@ -201,10 +201,10 @@ static void engage_cc(float target_current)
  */
 int main(void)
 {
-    uint8_t i;
-    i2c_status_t init_status;
-    i2c_status_t dac_status;
-
+    // uint8_t i;
+    // i2c_status_t init_status;
+    // i2c_status_t dac_status;
+    
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
     SystemCoreClockUpdate();
     Delay_Init();
@@ -213,30 +213,29 @@ int main(void)
     printf("ChipID:%08x\r\n", DBGMCU_GetCHIPID());
     printf("Phase 01: Hardware Foundation\r\n");
 
-    /* Initialize I2C1 bus */
+    // /* Initialize I2C1 bus */
     printf("Initializing I2C1 at 100kHz...\r\n");
     i2c_util_init();
     printf("I2C1 initialized\r\n");
 
     /* Initialize all INA226 devices in a loop */
     printf("Initializing %d INA226 devices...\r\n", DEV_COUNT);
-    for (i = 0; i < DEV_COUNT; i++)
-    {
-        init_status = ina226_init(&devs[i]);
-        if (init_status == I2C_OK)
-        {
-            printf("INA226[%d] at 0x%02X init: OK\r\n",
-                   i, devs[i].address);
-        }
-        else
-        {
-            printf("INA226[%d] at 0x%02X init: FAIL (%d)\r\n",
-                   i, devs[i].address, init_status);
-        }
-    }
+    // for (i = 0; i < DEV_COUNT; i++)
+    // {
+    //     init_status = ina226_init(&devs[i]);
+    //     if (init_status == I2C_OK)
+    //     {
+    //         printf("INA226[%d] at 0x%02X init: OK\r\n",
+    //                i, devs[i].address);
+    //     }
+    //     else
+    //     {
+    //         printf("INA226[%d] at 0x%02X init: FAIL (%d)\r\n",
+    //                i, devs[i].address, init_status);
+    //     }
+    // }
 
     /* Configure PA4 as EXTI4 falling-edge input for INA226 wired-OR ALARM signal */
-    {
         GPIO_InitTypeDef GPIO_InitStructure = {0};
         EXTI_InitTypeDef EXTI_InitStructure = {0};
 
@@ -261,197 +260,199 @@ int main(void)
         NVIC_EnableIRQ(EXTI4_IRQn);
 
         printf("EXTI4 on PA4 configured (INA226 ALARM input)\r\n");
-    }
+
 
     /* Initialize DAC8571 and write mid-scale test value */
-    dac8571_init();
-    dac_status = dac8571_set_output(0x8000);
-    if (dac_status == I2C_OK)
-    {
-        printf("DAC8571 mid-scale test: OK\r\n");
-    }
-    else
-    {
-        printf("DAC8571 mid-scale test: FAIL (%d)\r\n", dac_status);
-    }
+    // dac8571_init();
+    // dac_status = dac8571_set_output(0x8000);
+    // if (dac_status == I2C_OK)
+    // {
+    //     printf("DAC8571 mid-scale test: OK\r\n");
+    // }
+    // else
+    // {
+    //     printf("DAC8571 mid-scale test: FAIL (%d)\r\n", dac_status);
+    // }
 
     /* Initialize USB-CDC for debug output via virtual COM port */
     printf("Initializing USB-CDC...\r\n");
     usb_cdc_init();
-    printf("USB-CDC ready — connect USB for virtual COM port\r\n");
+    printf("USB-CDC ready connect USB for virtual COM port\r\n");
 
     /* Initialize protocol (USART2 command/telemetry channel) */
     protocol_init();
 
     /* Initialize PID controllers */
-    pid_init(&pid_cv, PID_CV_KP, PID_CV_KI, PID_CV_KD);
-    pid_init(&pid_cc, PID_CC_KP, PID_CC_KI, PID_CC_KD);
-    printf("PID controller initialized (CV: Kp=%.2f Ki=%.2f Kd=%.2f, CC: Kp=%.2f Ki=%.2f Kd=%.2f)\r\n",
-           PID_CV_KP, PID_CV_KI, PID_CV_KD,
-           PID_CC_KP, PID_CC_KI, PID_CC_KD);
+    // pid_init(&pid_cv, PID_CV_KP, PID_CV_KI, PID_CV_KD);
+    // pid_init(&pid_cc, PID_CC_KP, PID_CC_KI, PID_CC_KD);
+    // printf("PID controller initialized (CV: Kp=%.2f Ki=%.2f Kd=%.2f, CC: Kp=%.2f Ki=%.2f Kd=%.2f)\r\n",
+    //        PID_CV_KP, PID_CV_KI, PID_CV_KD,
+    //        PID_CC_KP, PID_CC_KI, PID_CC_KD);
 
     /* Initialize fault handler */
-    fault_init();
-    printf("Fault handler initialized (rated: %.1fW, max retries: %d)\r\n",
-           RATED_WATTAGE, MAX_RETRY_COUNT);
+    // fault_init();
+    // printf("Fault handler initialized (rated: %.1fW, max retries: %d)\r\n",
+    //        RATED_WATTAGE, MAX_RETRY_COUNT);
 
     /* Initialize WS2812 LED driver (TIM2 CH1 PA0 PWM + DMA1 CH5) */
-    ws2812_init();
+    // ws2812_init();
 
     /* Initialize NTC temperature sensor (ADC1 CH5 PA5) */
-    temp_sensor_init();
+    // temp_sensor_init();
 
     /* Initialize fan controller (TIM3 PA6 PWM 25kHz + PA7 tacho + PID 50°C) */
-    fan_init();
+    // fan_init();
 
     /* Phase 2 test engage replaced by cJSON commands in Phase 3 */
     /* System now starts in MODE_IDLE and waits for commands via USART2 */
 
     /* Main control loop: 100ms SysTick-gated */
+
+
     while (1)
     {
-        float bus_v;
-        float bus_i;
-        float bus_p;
-        float mos_i[4];
-        float mos_v[4];
-        uint32_t now;
-        static uint32_t fault_free_ms = 0;
+        // float bus_v;
+        // float bus_i;
+        // float bus_p;
+        // float mos_i[4];
+        // float mos_v[4];
+        // uint32_t now;
+        // static uint32_t fault_free_ms = 0;
 
         /* 100ms control period gating via SysTick counter */
-        now = SysTick->CNT;
-        if ((now - last_control_tick) < (SystemCoreClock / 1000 * CONTROL_PERIOD_MS / 1000))
-        {
-            continue;
-        }
-        last_control_tick = now;
+        // now = SysTick->CNT;
+        // if ((now - last_control_tick) < (SystemCoreClock / 1000 * CONTROL_PERIOD_MS / 1000))
+        // {
+        //     continue;
+        // }
+        // last_control_tick = now;
 
         /* 0. Poll for incoming commands (Phase 3) */
-        {
-            const char *cmd_line = protocol_poll();
-            if (cmd_line != NULL)
-            {
-                protocol_process_command(cmd_line);
-            }
-        }
+        // {
+        //     const char *cmd_line = protocol_poll();
+        //     if (cmd_line != NULL)
+        //     {
+        //         protocol_process_command(cmd_line);
+        //     }
+        // }
 
         /* 1. Read summary INA226 for PID feedback (devs[4] = summary) */
-        bus_v = 0.0f;
-        bus_i = 0.0f;
-        bus_p = 0.0f;
-        ina226_get_bus_voltage(&devs[4], &bus_v);
-        ina226_get_current(&devs[4], &bus_i);
-        ina226_get_power(&devs[4], &bus_p);
+        // bus_v = 0.0f;
+        // bus_i = 0.0f;
+        // bus_p = 0.0f;
+        // ina226_get_bus_voltage(&devs[4], &bus_v);
+        // ina226_get_current(&devs[4], &bus_i);
+        // ina226_get_power(&devs[4], &bus_p);
 
         /* 2. Read 4 MOS channel currents and voltages for monitoring */
-        for (i = 0; i < 4; i++)
-        {
-            mos_i[i] = 0.0f;
-            mos_v[i] = 0.0f;
-            ina226_get_current(&devs[i], &mos_i[i]);
-            ina226_get_bus_voltage(&devs[i], &mos_v[i]);
-        }
+        // for (i = 0; i < 4; i++)
+        // {
+        //     mos_i[i] = 0.0f;
+        //     mos_v[i] = 0.0f;
+        //     ina226_get_current(&devs[i], &mos_i[i]);
+        //     ina226_get_bus_voltage(&devs[i], &mos_v[i]);
+        // }
 
         /* 2.5. Read NTC heatsink temperature (for telemetry + fan control) */
-        temp_sensor_read();
+        // temp_sensor_read();
 
         /* 3. Check fault flag from EXTI4 ISR */
-        if (fault_triggered)
-        {
-            system_mode = MODE_FAULT;
-            fault_handler_hw(fault_source_mask);
-            dac8571_set_output(0);
-            last_dac_value = 0;
-            fault_print_snapshot(&fault_reg, 0, MODE_FAULT);
-            fault_triggered = 0;
-        }
+        // if (fault_triggered)
+        // {
+        //     system_mode = MODE_FAULT;
+        //     fault_handler_hw(fault_source_mask);
+        //     dac8571_set_output(0);
+        //     last_dac_value = 0;
+        //     fault_print_snapshot(&fault_reg, 0, MODE_FAULT);
+        //     fault_triggered = 0;
+        // }
 
         /* 4. OPP check (D-13): total power over-limit */
-        if (bus_p > RATED_WATTAGE && system_mode != MODE_FAULT)
-        {
-            fault_handler_opp();
-            dac8571_set_output(0);
-            last_dac_value = 0;
-            fault_print_snapshot(&fault_reg, last_dac_value, system_mode);
-            system_mode = MODE_FAULT;
-        }
+        // if (bus_p > RATED_WATTAGE && system_mode != MODE_FAULT)
+        // {
+        //     fault_handler_opp();
+        //     dac8571_set_output(0);
+        //     last_dac_value = 0;
+        //     fault_print_snapshot(&fault_reg, last_dac_value, system_mode);
+        //     system_mode = MODE_FAULT;
+        // }
 
         /* 5. State machine dispatch */
-        if (system_mode == MODE_CV && !fault_triggered)
-        {
-            float output = pid_compute(&pid_cv, cv_target_voltage, bus_v, 0.1f);
-            last_dac_value = (uint16_t)output;
-            dac8571_set_output(last_dac_value);
-        }
-        else if (system_mode == MODE_CC && !fault_triggered)
-        {
-            float output = pid_compute(&pid_cc, cc_target_current, bus_i, 0.1f);
-            last_dac_value = (uint16_t)output;
-            dac8571_set_output(last_dac_value);
-        }
+        // if (system_mode == MODE_CV && !fault_triggered)
+        // {
+        //     float output = pid_compute(&pid_cv, cv_target_voltage, bus_v, 0.1f);
+        //     last_dac_value = (uint16_t)output;
+        //     dac8571_set_output(last_dac_value);
+        // }
+        // else if (system_mode == MODE_CC && !fault_triggered)
+        // {
+        //     float output = pid_compute(&pid_cc, cc_target_current, bus_i, 0.1f);
+        //     last_dac_value = (uint16_t)output;
+        //     dac8571_set_output(last_dac_value);
+        // }
 
         /* 5.5. Update WS2812 LED color if system mode changed */
-        ws2812_update_from_mode(system_mode);
+        // ws2812_update_from_mode(system_mode);
 
         /* 5.6. Compute fan PID + update PWM duty + read RPM + check stall */
-        fan_update(heatsink_temp_c);
+        // fan_update(heatsink_temp_c);
 
         /* 6. Fault state machine: manage auto-retry, cooldown, latch */
-        if (system_mode == MODE_FAULT)
-        {
-            fault_state_machine();
-        }
+        // if (system_mode == MODE_FAULT)
+        // {
+        //     fault_state_machine();
+        // }
 
-        /* 6.5. Send telemetry packet (Phase 3 — COMM-02) */
-        protocol_send_telemetry(bus_v, bus_i, bus_p, mos_i, mos_v);
+        /* 6.5. Send telemetry packet (Phase 3 �? COMM-02) */
+        // protocol_send_telemetry(bus_v, bus_i, bus_p, mos_i, mos_v);
 
-        /* 7. Retry counter reset (D-03): 30s fault-free → reset to 0 */
-        if (system_mode != MODE_FAULT)
-        {
-            fault_free_ms += CONTROL_PERIOD_MS;
-            if (fault_free_ms >= FAULT_FREE_RESET_MS)
-            {
-                fault_reg.bits.retry_count = 0;
-                fault_free_ms = 0;
-            }
-        }
-        else
-        {
-            fault_free_ms = 0;
-        }
+        /* 7. Retry counter reset (D-03): 30s fault-free �? reset to 0 */
+        // if (system_mode != MODE_FAULT)
+        // {
+        //     fault_free_ms += CONTROL_PERIOD_MS;
+        //     if (fault_free_ms >= FAULT_FREE_RESET_MS)
+        //     {
+        //         fault_reg.bits.retry_count = 0;
+        //         fault_free_ms = 0;
+        //     }
+        // }
+        // else
+        // {
+        //     fault_free_ms = 0;
+        // }
 
         /* 8. Periodic calibration check (PROT-04): every 10 cycles (1s) */
-        cycle_count++;
-        if (cycle_count >= 10)
-        {
-            uint16_t cal_val;
-            float check_v;
+        // cycle_count++;
+        // if (cycle_count >= 10)
+        // {
+            // uint16_t cal_val;
+            // float check_v;
 
-            cycle_count = 0;
-            for (i = 0; i < DEV_COUNT; i++)
-            {
-                cal_val = 0;
-                if (ina226_read_calibration(&devs[i], &cal_val) != I2C_OK)
-                {
-                    continue;
-                }
-                if (cal_val == 0)
-                {
-                    check_v = 0.0f;
-                    if (ina226_get_bus_voltage(&devs[i], &check_v) == I2C_OK
-                        && check_v > 0.1f)
-                    {
-                        printf("[PROT-04] CH%d cal=0 bus=%.2fV — re-initializing\r\n",
-                               devs[i].channel, check_v);
-                        ina226_init(&devs[i]);
-                    }
-                }
-            }
-        }
+            // cycle_count = 0;
+            // for (i = 0; i < DEV_COUNT; i++)
+            // {
+            //     cal_val = 0;
+            //     if (ina226_read_calibration(&devs[i], &cal_val) != I2C_OK)
+            //     {
+            //         continue;
+            //     }
+            //     if (cal_val == 0)
+            //     {
+            //         check_v = 0.0f;
+            //         if (ina226_get_bus_voltage(&devs[i], &check_v) == I2C_OK
+            //             && check_v > 0.1f)
+            //         {
+            //             printf("[PROT-04] CH%d cal=0 bus=%.2fV �? re-initializing\r\n",
+            //                    devs[i].channel, check_v);
+            //             ina226_init(&devs[i]);
+            //         }
+            //     }
+            // }
+        // }
 
         /* 9. Print summary */
-        printf("Mode:%d V:%.2f I:%.2f P:%.2f DAC:%u MOS:%.2f %.2f %.2f %.2f\r\n",
-               system_mode, bus_v, bus_i, bus_p, last_dac_value,
-               mos_i[0], mos_i[1], mos_i[2], mos_i[3]);
+        // printf("Mode:%d V:%.2f I:%.2f P:%.2f DAC:%u MOS:%.2f %.2f %.2f %.2f\r\n",
+        //        system_mode, bus_v, bus_i, bus_p, last_dac_value,
+        //        mos_i[0], mos_i[1], mos_i[2], mos_i[3]);
     }
 }
