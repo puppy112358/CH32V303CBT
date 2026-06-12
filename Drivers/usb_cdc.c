@@ -32,13 +32,15 @@ void usb_cdc_init(void)
  * @fn      usb_printf
  *
  * @brief   Print formatted string to USB-CDC virtual COM port.
- *          Formats into a local buffer, checks if EP3 (bulk IN) is
- *          available, then uploads via USBFS_Endp_DataUp in copy mode.
- *          Non-blocking: drops data if endpoint is busy.
+ *          Formats into a local buffer, then uploads to EP3 (bulk IN) via
+ *          USBFS_Endp_DataUp with copy mode.
+ *          Fire-and-forget: if EP3 is still busy from a previous call
+ *          (host hasn't polled), force-resets the endpoint and overwrites.
+ *          Non-blocking, super-loop safe.
  *
  * @param   fmt    printf-style format string
  * @param   ...    variable arguments
- * @return  number of bytes sent on success, -1 on busy or error
+ * @return  number of bytes sent on success, -1 on format error
  */
 int usb_printf(const char *fmt, ...)
 {
@@ -55,10 +57,14 @@ int usb_printf(const char *fmt, ...)
         return -1;
     }
 
-    /* Check if EP3 is available — drop if busy (host not connected or pending transfer) */
+    /* If EP3 is still busy from a previous transfer that the host never
+     * read (e.g. terminal not open), force-reset the endpoint so we
+     * don't permanently block.  Otherwise the very first usb_printf()
+     * after boot would make all subsequent calls fail. */
     if (USBFS_Endp_Busy[DEF_UEP3] != 0)
     {
-        return -1;
+        USBFSD->UEP3_TX_CTRL = (USBFSD->UEP3_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
+        USBFS_Endp_Busy[DEF_UEP3] = 0;
     }
 
     /* Upload to EP3 (bulk IN) via copy mode */

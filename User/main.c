@@ -30,6 +30,12 @@
 #include "../Drivers/protocol.h"
 #include "../Drivers/usb_cdc.h"
 
+/* USB device enumeration status (set by USBFS_IRQHandler after SET_CONFIGURATION) */
+extern volatile uint8_t USBFS_DevEnumStatus;
+/* USB IN Endpoint Busy Flag and endpoint numbers from USBFS device stack */
+extern volatile uint8_t USBFS_Endp_Busy[];
+#define DEF_UEP3  0x03
+
 /* External references for ISR modules */
 extern INA226_Dev devs[5];
 
@@ -44,7 +50,7 @@ extern INA226_Dev devs[5];
 #define CONTROL_PERIOD_MS   100
 #define SOFTSTART_STEPS     5
 
-/* System mode enumeration �? defined in Drivers/fault.h */
+/* System mode enumeration �?? defined in Drivers/fault.h */
 /* (SystemMode: MODE_IDLE=0, MODE_CV=1, MODE_CC=2, MODE_FAULT=3) */
 
 /* Global Variable */
@@ -75,7 +81,7 @@ uint32_t last_control_tick = 0;
 uint32_t cycle_count = 0;
 
 /*
- * INA226 device array �? 5 devices on I2C1 at addresses confirmed by hardware:
+ * INA226 device array �?? 5 devices on I2C1 at addresses confirmed by hardware:
  *   0x40: MOS Channel 1 (A1=GND, A0=GND)
  *   0x41: MOS Channel 2 (A1=GND, A0=VS)
  *   0x42: MOS Channel 3 (A1=GND, A0=SDA)
@@ -93,10 +99,10 @@ INA226_Dev devs[DEV_COUNT] = {
 /*********************************************************************
  * @fn      softstart_engage
  *
- * @brief   软启动线�? DAC 斜坡: 500ms 内从 0 线性增加到目标值�?
- *          5 �? × 100ms，仅�? IDLE→CV �? IDLE→CC 转换时调用�?
+ * @brief   软启动线�?? DAC 斜坡: 500ms 内从 0 线性增加到目标值�?
+ *          5 �?? × 100ms，仅�?? IDLE→CV �?? IDLE→CC 转换时调用�?
  *
- * @param   target_dac - 目标 DAC �? (0-65535)
+ * @param   target_dac - 目标 DAC �?? (0-65535)
  *
  * @return  none
  */
@@ -128,9 +134,9 @@ static void softstart_engage(uint16_t target_dac)
 /*********************************************************************
  * @fn      engage_cv
  *
- * @brief   切换到恒压模�? (CV)�?
- *          计算初始 PID 输出，执行软启动斜坡，预加载积分�?
- *          以实现无扰切捀�?
+ * @brief   切换到恒压模�?? (CV)�??
+ *          计算初始 PID 输出，执行软启动斜坡，预加载积分�??
+ *          以实现无扰切捀�??
  *
  * @param   target_voltage - 目标电压 (V)
  *
@@ -161,9 +167,9 @@ void engage_cv(float target_voltage)
 /*********************************************************************
  * @fn      engage_cc
  *
- * @brief   切换到恒流模�? (CC)�?
- *          计算初始 PID 输出，执行软启动斜坡，预加载积分�?
- *          以实现无扰切捀�?
+ * @brief   切换到恒流模�?? (CC)�??
+ *          计算初始 PID 输出，执行软启动斜坡，预加载积分�??
+ *          以实现无扰切捀�??
  *
  * @param   target_current - 目标电流 (A)
  *
@@ -212,7 +218,6 @@ int main(void)
     printf("SystemClk:%d\r\n", SystemCoreClock);
     printf("ChipID:%08x\r\n", DBGMCU_GetCHIPID());
     printf("Phase 01: Hardware Foundation\r\n");
-
     // /* Initialize I2C1 bus */
     printf("Initializing I2C1 at 100kHz...\r\n");
     i2c_util_init();
@@ -277,7 +282,27 @@ int main(void)
     /* Initialize USB-CDC for debug output via virtual COM port */
     printf("Initializing USB-CDC...\r\n");
     usb_cdc_init();
-    printf("USB-CDC ready connect USB for virtual COM port\r\n");
+    printf("USB-CDC waiting for host enumeration...\r\n");
+
+    /* Wait for USB enumeration to complete (host sends SET_CONFIGURATION).
+     * Without this, usb_printf data would be queued but never polled by the host,
+     * permanently blocking EP3 (Busy flag stays set). */
+    {
+        uint32_t enum_timeout = 5000;  /* 5 seconds max wait */
+        while (USBFS_DevEnumStatus == 0 && enum_timeout > 0)
+        {
+            Delay_Ms(10);
+            enum_timeout -= 10;
+        }
+        if (USBFS_DevEnumStatus)
+        {
+            printf("USB-CDC enumerated, ready\r\n");
+        }
+        else
+        {
+            printf("USB-CDC enumeration timeout �? host not connected?\r\n");
+        }
+    }
 
     /* Initialize protocol (USART2 command/telemetry channel) */
     protocol_init();
@@ -308,20 +333,38 @@ int main(void)
 
     /* Main control loop: 100ms SysTick-gated */
 
+    /* Diagnostic: test usb_printf and report via UART1 */
+    {
+        int ret;
+        ret = usb_printf("SystemClk:%d\r\n", SystemCoreClock);
+        printf("[USB-DIAG] usb_printf(SystemClk) returned %d\r\n", ret);
+        ret = usb_printf("USB-CDC ready\r\n");
+        printf("[USB-DIAG] usb_printf(ready) returned %d\r\n", ret);
+        printf("[USB-DIAG] EP3_Busy=%d, DevEnumStatus=%d\r\n",
+               USBFS_Endp_Busy[DEF_UEP3], USBFS_DevEnumStatus);
+    }
 
     while (1)
     {
-        // float bus_v;
-        // float bus_i;
-        // float bus_p;
-        // float mos_i[4];
-        // float mos_v[4];
-        // uint32_t now;
-        // static uint32_t fault_free_ms = 0;
+        static uint32_t last_usb_test_ms = 0;
+        int ret;
 
-        /* 100ms control period gating via SysTick counter */
-        // now = SysTick->CNT;
-        // if ((now - last_control_tick) < (SystemCoreClock / 1000 * CONTROL_PERIOD_MS / 1000))
+        /* Periodic USB CDC test �? attempt every 1000ms */
+        if ((cycle_count - last_usb_test_ms) >= 10)  /* 10 loops × 100ms = 1s */
+        {
+            last_usb_test_ms = cycle_count;
+
+            ret = usb_printf("USB CDC alive, cycle=%lu\r\n", cycle_count);
+            if (ret < 0)
+            {
+                /* Report failure via UART1 so user can see what's happening */
+                printf("[USB-DIAG] usb_printf failed (ret=%d, EP3_Busy=%d, Enum=%d)\r\n",
+                       ret, USBFS_Endp_Busy[DEF_UEP3], USBFS_DevEnumStatus);
+            }
+        }
+
+        Delay_Ms(100);
+        cycle_count++;
         // {
         //     continue;
         // }
@@ -403,10 +446,10 @@ int main(void)
         //     fault_state_machine();
         // }
 
-        /* 6.5. Send telemetry packet (Phase 3 �? COMM-02) */
+        /* 6.5. Send telemetry packet (Phase 3 �?? COMM-02) */
         // protocol_send_telemetry(bus_v, bus_i, bus_p, mos_i, mos_v);
 
-        /* 7. Retry counter reset (D-03): 30s fault-free �? reset to 0 */
+        /* 7. Retry counter reset (D-03): 30s fault-free �?? reset to 0 */
         // if (system_mode != MODE_FAULT)
         // {
         //     fault_free_ms += CONTROL_PERIOD_MS;
@@ -442,7 +485,7 @@ int main(void)
             //         if (ina226_get_bus_voltage(&devs[i], &check_v) == I2C_OK
             //             && check_v > 0.1f)
             //         {
-            //             printf("[PROT-04] CH%d cal=0 bus=%.2fV �? re-initializing\r\n",
+            //             printf("[PROT-04] CH%d cal=0 bus=%.2fV �?? re-initializing\r\n",
             //                    devs[i].channel, check_v);
             //             ina226_init(&devs[i]);
             //         }
