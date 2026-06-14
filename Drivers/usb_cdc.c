@@ -75,3 +75,47 @@ int usb_printf(const char *fmt, ...)
 
     return len;
 }
+
+/*********************************************************************
+ * @fn      usb_cdc_write
+ *
+ * @brief   Write raw data buffer to USB-CDC EP3 (bulk IN).
+ *          Blocks briefly if EP3 is busy (host hasn't read previous data),
+ *          then force-resets and overwrites.  Called by _write() to redirect
+ *          printf to USB CDC.  Max 64 bytes per call (USB FS bulk packet).
+ *
+ * @param   data - pointer to raw bytes to send
+ * @param   len  - number of bytes (0-64, clamped to DEF_USBD_ENDP3_SIZE)
+ * @return  0 on success, -1 if len is 0 or too large
+ */
+int usb_cdc_write(const uint8_t *data, uint16_t len)
+{
+    volatile uint32_t timeout;
+
+    if (len == 0 || data == NULL)
+    {
+        return -1;
+    }
+
+    if (len > DEF_USBD_ENDP3_SIZE)
+    {
+        len = DEF_USBD_ENDP3_SIZE;
+    }
+
+    /* Brief wait for EP3 to become free (host read previous data).
+     * After ~100ms of no host read, force-reset and overwrite. */
+    timeout = 100000;
+    while (USBFS_Endp_Busy[DEF_UEP3] != 0 && timeout > 0)
+    {
+        timeout--;
+    }
+
+    if (USBFS_Endp_Busy[DEF_UEP3] != 0)
+    {
+        /* Host not reading — force-reset endpoint */
+        USBFSD->UEP3_TX_CTRL = (USBFSD->UEP3_TX_CTRL & ~USBFS_UEP_T_RES_MASK) | USBFS_UEP_T_RES_NAK;
+        USBFS_Endp_Busy[DEF_UEP3] = 0;
+    }
+
+    return USBFS_Endp_DataUp(DEF_UEP3, (uint8_t *)data, len, DEF_UEP_CPY_LOAD);
+}

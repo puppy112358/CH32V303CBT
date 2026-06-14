@@ -11,6 +11,7 @@
 * microcontroller manufactured by Nanjing Qinheng Microelectronics.
 *******************************************************************************/
 #include "debug.h"
+#include "../Drivers/usb_cdc.h"
 
 static uint8_t  p_us = 0;
 static uint16_t p_ms = 0;
@@ -180,16 +181,8 @@ __attribute__((used)) int _write(int fd, char *buf, int size)
 
     do
     {
-
-        /**
-         * data0  data1 8 bytes
-         * data0 The lowest byte storage length, the maximum is 7
-         *
-         */
-
         while( (*(DEBUG_DATA0_ADDRESS) != 0u))
         {
-
         }
 
         if(writeSize>7)
@@ -210,20 +203,19 @@ __attribute__((used)) int _write(int fd, char *buf, int size)
 
     } while (writeSize);
 
-
 #else
-    for(i = 0; i < size; i++)
+    /* Redirect printf to USB-CDC virtual COM port.
+     * Send data in 64-byte chunks (USB FS max packet size) via EP3 bulk IN.
+     * Non-blocking with timeout: drops data if host is not connected. */
+    while (i < size)
     {
-#if(DEBUG == DEBUG_UART1)
-        while(USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET);
-        USART_SendData(USART1, *buf++);
-#elif(DEBUG == DEBUG_UART2)
-        while(USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET);
-        USART_SendData(USART2, *buf++);
-#elif(DEBUG == DEBUG_UART3)
-        while(USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET);
-        USART_SendData(USART3, *buf++);
-#endif
+        uint16_t chunk = (uint16_t)(size - i);
+        if (chunk > 64)
+        {
+            chunk = 64;
+        }
+        usb_cdc_write((const uint8_t *)(buf + i), chunk);
+        i += chunk;
     }
 #endif
     return size;

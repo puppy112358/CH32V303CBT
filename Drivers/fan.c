@@ -253,7 +253,7 @@ void fan_init(void)
     TIM_ITConfig(TIM3, TIM_IT_CC2, ENABLE);
 
     /* ---- 8. Configure NVIC for TIM3 ---- */
-    /* Priority 0x03: same as DMA1_CH5, lower than EXTI4 (0x01) and USART2 (0x02). */
+    /* Priority 0x03: same as DMA1_CH5, lower than EXTI4 (0x01) and USART3 (0x02). */
     NVIC_SetPriority(TIM3_IRQn, 0x03);
     NVIC_EnableIRQ(TIM3_IRQn);
 

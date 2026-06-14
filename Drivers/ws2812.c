@@ -251,7 +251,7 @@ void ws2812_init(void)
     DMA_Init(DMA1_Channel5, &DMA_InitStructure);
 
     /* ---- 7. NVIC: DMA1 Channel 5 TC interrupt ---- */
-    /* Priority 0x03: lower than EXTI4 (0x01) and USART2 (0x02). */
+    /* Priority 0x03: lower than EXTI4 (0x01) and USART3 (0x02). */
     NVIC_SetPriority(DMA1_Channel5_IRQn, 0x03);
     NVIC_EnableIRQ(DMA1_Channel5_IRQn);
     DMA_ITConfig(DMA1_Channel5, DMA_IT_TC, ENABLE);

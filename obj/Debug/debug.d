@@ -37,7 +37,8 @@ Debug/debug.o: ../Debug/debug.c ../Debug/debug.h \
  c:\gitproject\ch32v303cbt\drivers\fan.h \
  c:\gitproject\ch32v303cbt\drivers\pid.h \
  c:/GitProject/CH32V303CBT/Peripheral/inc/ch32v30x_misc.h \
- c:/GitProject/CH32V303CBT/Peripheral/inc/ch32v30x_usb.h
+ c:/GitProject/CH32V303CBT/Peripheral/inc/ch32v30x_usb.h \
+ ../Debug/../Drivers/usb_cdc.h
 
 ../Debug/debug.h:
 
@@ -118,3 +119,5 @@ c:\gitproject\ch32v303cbt\drivers\pid.h:
 c:/GitProject/CH32V303CBT/Peripheral/inc/ch32v30x_misc.h:
 
 c:/GitProject/CH32V303CBT/Peripheral/inc/ch32v30x_usb.h:
+
+../Debug/../Drivers/usb_cdc.h:

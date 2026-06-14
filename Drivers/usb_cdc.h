@@ -51,6 +51,19 @@ void usb_cdc_init(void);
  */
 int usb_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
+/*********************************************************************
+ * @fn      usb_cdc_write
+ *
+ * @brief   Write raw data buffer to USB-CDC EP3 (bulk IN).
+ *          Blocks with timeout if EP3 is busy, then forces reset and
+ *          overwrites.  Used by _write() to redirect printf to USB CDC.
+ *
+ * @param   data - pointer to raw bytes
+ * @param   len  - number of bytes (max 64 = USB FS bulk packet size)
+ * @return  0 on success, -1 on error
+ */
+int usb_cdc_write(const uint8_t *data, uint16_t len);
+
 #ifdef __cplusplus
 }
 #endif

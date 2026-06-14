@@ -33,8 +33,7 @@ void NMI_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void HardFault_Handler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void USBFS_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void EXTI4_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
-void USART2_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
-void DMA1_Channel5_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+
 void TIM3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 
 /*********************************************************************
@@ -120,9 +119,9 @@ void EXTI4_IRQHandler(void)
 }
 
 /*********************************************************************
- * @fn      USART2_IRQHandler
+ * @fn      USART1_IRQHandler
  *
- * @brief   USART2 interrupt handler — RXNE-driven ring buffer fill.
+ * @brief   USART1 interrupt handler — RXNE-driven ring buffer fill.
  *          On RXNE: read RDR byte, write to rx_buf at rx_tail with
  *          wrap-around modulo 512. Discards byte if buffer is full
  *          (next_tail == rx_head) and sets rx_overflow flag.
@@ -132,50 +131,50 @@ void EXTI4_IRQHandler(void)
  *
  * @return  none
  */
-void USART2_IRQHandler(void)
-{
-    uint8_t byte;
-    uint16_t next_tail;
+// void USART1_IRQHandler(void)
+// {
+//     uint8_t byte;
+//     uint16_t next_tail;
 
-    /* Receive Data Register Not Empty */
-    if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET)
-    {
-        byte = (uint8_t)USART_ReceiveData(USART2);
-        next_tail = (rx_tail + 1) % RX_BUF_SIZE;
+//     /* Receive Data Register Not Empty */
+//     if (USART_GetFlagStatus(USART1, USART_FLAG_RXNE) != RESET)
+//     {
+//         byte = (uint8_t)USART_ReceiveData(USART1);
+//         next_tail = (rx_tail + 1) % RX_BUF_SIZE;
 
-        if (next_tail == rx_head)
-        {
-            /* Buffer full — discard byte */
-            rx_overflow = 1;
-        }
-        else
-        {
-            rx_buf[rx_tail] = byte;
-            rx_tail = next_tail;
-        }
-    }
+//         if (next_tail == rx_head)
+//         {
+//             /* Buffer full — discard byte */
+//             rx_overflow = 1;
+//         }
+//         else
+//         {
+//             rx_buf[rx_tail] = byte;
+//             rx_tail = next_tail;
+//         }
+//     }
 
-    /* Parity error — byte already read, discard, count for main loop */
-    if (USART_GetFlagStatus(USART2, USART_FLAG_PE) != RESET)
-    {
-        rx_parity_err++;
-        USART_ClearFlag(USART2, USART_FLAG_PE);
-    }
+//     /* Parity error — byte already read, discard, count for main loop */
+//     if (USART_GetFlagStatus(USART1, USART_FLAG_PE) != RESET)
+//     {
+//         rx_parity_err++;
+//         USART_ReceiveData(USART1);
+//     }
 
-    /* Framing error — count for main loop diagnostics */
-    if (USART_GetFlagStatus(USART2, USART_FLAG_FE) != RESET)
-    {
-        rx_framing_err++;
-        USART_ClearFlag(USART2, USART_FLAG_FE);
-    }
+//     /* Framing error — count for main loop diagnostics */
+//     if (USART_GetFlagStatus(USART1, USART_FLAG_FE) != RESET)
+//     {
+//         rx_framing_err++;
+//         USART_ReceiveData(USART1);
+//     }
 
-    /* Overrun error — data lost, flag for main loop */
-    if (USART_GetFlagStatus(USART2, USART_FLAG_ORE) != RESET)
-    {
-        rx_overflow = 1;
-        USART_ClearFlag(USART2, USART_FLAG_ORE);
-    }
-}
+//     /* Overrun error — data lost, flag for main loop */
+//     if (USART_GetFlagStatus(USART1, USART_FLAG_ORE) != RESET)
+//     {
+//         rx_overflow = 1;
+//         USART_ReceiveData(USART1);
+//     }
+// }
 
 /*********************************************************************
  * @fn      DMA1_Channel5_IRQHandler
@@ -193,24 +192,24 @@ void USART2_IRQHandler(void)
  *
  * @return  none
  */
-void DMA1_Channel5_IRQHandler(void)
-{
-    /* Check DMA1 Channel 5 Transfer Complete flag */
-    if (DMA_GetITStatus(DMA1_IT_TC5) != RESET)
-    {
-        /* Clear interrupt pending bit */
-        DMA_ClearITPendingBit(DMA1_IT_TC5);
+// void DMA1_Channel5_IRQHandler(void)
+// {
+//     /* Check DMA1 Channel 5 Transfer Complete flag */
+//     if (DMA_GetITStatus(DMA1_IT_TC5) != RESET)
+//     {
+//         /* Clear interrupt pending bit */
+//         DMA_ClearITPendingBit(DMA1_IT_TC5);
 
-        /* Disable DMA channel — stop further transfers */
-        DMA_Cmd(DMA1_Channel5, DISABLE);
+//         /* Disable DMA channel — stop further transfers */
+//         DMA_Cmd(DMA1_Channel5, DISABLE);
 
-        /* Disable TIM2 PWM — output goes low → RESET condition for WS2812 */
-        TIM_Cmd(TIM2, DISABLE);
+//         /* Disable TIM2 PWM — output goes low → RESET condition for WS2812 */
+//         TIM_Cmd(TIM2, DISABLE);
 
-        /* Clear busy flag — allows next ws2812_set_color() call to proceed */
-        ws2812_dma_busy = 0;
-    }
-}
+//         /* Clear busy flag — allows next ws2812_set_color() call to proceed */
+//         ws2812_dma_busy = 0;
+//     }
+// }
 
 /*********************************************************************
  * @fn      TIM3_IRQHandler

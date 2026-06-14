@@ -4,7 +4,7 @@
 * Version            : V1.0.0
 * Date               : 2026/06/07
 * Description        : Communication protocol implementation.
-*                      USART2 (PA2=TX, PA3=RX) at 115200 bps 8N1+odd parity.
+*                      USART1 (PA9=TX, PA10=RX) at 115200 bps 8N1+odd parity.
 *                      Interrupt-driven 512-byte RX ring buffer with newline-
 *                      delimited line extraction. Blocking TX for responses.
 *******************************************************************************/
@@ -30,6 +30,11 @@ extern void engage_cc(float target_current);
 extern volatile uint16_t fan_rpm;
 extern volatile uint8_t  fan_stall;
 extern uint32_t cycle_count;
+ringbuffer ring_buffer = {{0}, 0, 0, 0};
+USART_DMA_CTRL_  USART_DMA_CTRL = {
+    .DMA_USE_BUFFER = 0,
+    .Rx_Buffer      = {0},
+};
 
 /* --------------------------------------------------------------------------
  * cJSON Arena Allocator (4 KB static pool)
@@ -79,52 +84,57 @@ static char line_buf[LINE_BUF_SIZE];
 /*********************************************************************
  * @fn      protocol_init
  *
- * @brief   Initialize USART2 at 115200 bps 8N1+odd parity with RXNE
- *          interrupt enabled. Configure PA2 as AF push-pull (TX) and
- *          PA3 as input floating (RX). Zero ring buffer and error
- *          counters.
+ * @brief   Initialize USART1 at 115200 bps 8N1+odd parity with RXNE
+ *          interrupt enabled. Configure PA9 as AF push-pull (TX) and
+ *          PA10 as input floating (RX).
+ *          Zero ring buffer and error counters.
  *
  * @return  none
  */
 void protocol_init(void)
 {
-    GPIO_InitTypeDef  GPIO_InitStructure;
-    USART_InitTypeDef USART_InitStructure;
+    GPIO_InitTypeDef  GPIO_InitStructure  = {0};
+    USART_InitTypeDef USART_InitStructure = {0};
+    NVIC_InitTypeDef  NVIC_InitStructure  = {0};
+    /* Enable peripheral clocks — USART1 is on APB2.
+     * GPIOB clock also enabled per WCH USART example pattern. */
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1 | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
 
-    /* Enable peripheral clocks */
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-
-    /* Configure PA2 (TX) — AF push-pull */
-    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_2;
+    /* Configure PA9 (TX) — AF push-pull */
+    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_9;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF_PP;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 
-    /* Configure PA3 (RX) — input floating */
-    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_3;
+    /* Configure PA10 (RX) — input floating */
+    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_10;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IN_FLOATING;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
 
-    /* USART2: 115200 bps, 8 data bits, 1 stop bit, odd parity, RX+TX */
+    /* USART1: 115200 bps, 8 data bits, 1 stop bit, no parity, RX+TX */
     USART_InitStructure.USART_BaudRate            = 115200;
     USART_InitStructure.USART_WordLength          = USART_WordLength_8b;
     USART_InitStructure.USART_StopBits            = USART_StopBits_1;
-    USART_InitStructure.USART_Parity              = USART_Parity_Odd;
+    USART_InitStructure.USART_Parity              = USART_Parity_No;
     USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
     USART_InitStructure.USART_Mode                = USART_Mode_Rx | USART_Mode_Tx;
-    USART_Init(USART2, &USART_InitStructure);
+    USART_Init(USART1, &USART_InitStructure);
 
-    /* Enable RXNE interrupt */
-    USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
+    /* Enable USART_IT_IDLE interrupt for byte-by-byte reception */
+    USART_ITConfig(USART1, USART_IT_IDLE, ENABLE);
 
-    /* Enable USART2 */
-    USART_Cmd(USART2, ENABLE);
+    NVIC_InitStructure.NVIC_IRQChannel                   = USART1_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority        = 1;
+    NVIC_InitStructure.NVIC_IRQChannelCmd                = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+    /* Enable USART1 */
+    USART_Cmd(USART1, ENABLE);
 
-    /* Configure NVIC: USART2 at priority 0x02 (below EXTI4 at 0x01) */
-    NVIC_SetPriority(USART2_IRQn, 0x02);
-    NVIC_EnableIRQ(USART2_IRQn);
+    /* Configure NVIC: USART1 at priority 0x02 (below EXTI4 at 0x01) */
+    // NVIC_SetPriority(USART1_IRQn, 0x02);
+    // NVIC_EnableIRQ(USART1_IRQn);
 
     /* Zero ring buffer and error flags */
     rx_head        = 0;
@@ -132,6 +142,17 @@ void protocol_init(void)
     rx_overflow    = 0;
     rx_parity_err  = 0;
     rx_framing_err = 0;
+
+    /* USART1 TX test — send known string to verify terminal baud rate */
+    {
+        const char *test = "\r\n=== USART1 OK (115200,8N1) ===\r\n";
+        while (*test)
+        {
+            while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET) {}
+            USART_SendData(USART1, (uint16_t)(*test));
+            test++;
+        }
+    }
 
     /* Configure cJSON arena allocator hooks */
     {
@@ -141,11 +162,102 @@ void protocol_init(void)
         cJSON_InitHooks(&hooks);
     }
 
-    printf("Protocol init: USART2 115200 8N1+odd parity, ring buffer %d bytes\r\n",
+    printf("Protocol init: USART1 115200 8N1 (no parity), ring buffer %d bytes\r\n",
            RX_BUF_SIZE);
     printf("cJSON arena: %d bytes at 0x%08X\r\n",
            CJSON_POOL_SIZE, (uint32_t)(uintptr_t)cjson_pool);
 }
+/*********************************************************************
+ * @fn      DMA_INIT
+ *
+ * @brief   Configures the DMA for USART1.
+ *
+ * @return  none
+ */
+void DMA_INIT(void)
+{
+    DMA_InitTypeDef  DMA_InitStructure  = {0};
+    NVIC_InitTypeDef NVIC_InitStructure = {0};
+
+    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+
+    DMA_DeInit(DMA1_Channel5);
+    DMA_InitStructure.DMA_PeripheralInc      = DMA_PeripheralInc_Disable;
+    DMA_InitStructure.DMA_MemoryInc          = DMA_MemoryInc_Enable;
+    DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+    DMA_InitStructure.DMA_MemoryDataSize     = DMA_MemoryDataSize_Byte;
+    DMA_InitStructure.DMA_Mode               = DMA_Mode_Normal;
+    DMA_InitStructure.DMA_Priority           = DMA_Priority_VeryHigh;
+    DMA_InitStructure.DMA_M2M                = DMA_M2M_Disable;
+
+    DMA_InitStructure.DMA_PeripheralBaseAddr = (u32)(&USART1->DATAR);
+    DMA_InitStructure.DMA_MemoryBaseAddr     = (u32)USART_DMA_CTRL.Rx_Buffer[0];
+    DMA_InitStructure.DMA_DIR                = DMA_DIR_PeripheralSRC;
+    DMA_InitStructure.DMA_BufferSize         = RX_BUFFER_LEN;
+    DMA_Init(DMA1_Channel5, &DMA_InitStructure);
+
+    DMA_ITConfig(DMA1_Channel5, DMA_IT_TC, ENABLE);
+
+    NVIC_InitStructure.NVIC_IRQChannel                   = DMA1_Channel5_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority        = 1;
+    NVIC_InitStructure.NVIC_IRQChannelCmd                = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+
+    DMA_Cmd(DMA1_Channel5, ENABLE);
+    USART_DMACmd(USART1, USART_DMAReq_Rx, ENABLE);
+}
+/*********************************************************************
+ * @fn      ring_buffer_push_huge
+ *
+ * @brief   Put a large amount of data into the ring buffer.
+ *
+ * @return  none
+ */
+void ring_buffer_push_huge(uint8_t *buffer, uint16_t len)
+{
+    const uint16_t bufferRemainCount = RING_BUFFER_LEN - ring_buffer.RemainCount;
+    if (bufferRemainCount < len)
+    {
+        len = bufferRemainCount;
+    }
+
+    const uint16_t bufferSize = RING_BUFFER_LEN - ring_buffer.RecvPos;
+    if (bufferSize >= len)
+    {
+        memcpy(&(ring_buffer.buffer[ring_buffer.RecvPos]), buffer, len);
+        ring_buffer.RecvPos += len;
+    }
+    else
+    {
+        uint16_t otherSize = len - bufferSize;
+        memcpy(&(ring_buffer.buffer[ring_buffer.RecvPos]), buffer, bufferSize);
+        memcpy(ring_buffer.buffer, &(buffer[bufferSize]), otherSize);
+        ring_buffer.RecvPos = otherSize;
+    }
+    ring_buffer.RemainCount += len;
+}
+
+/*********************************************************************
+ * @fn      ring_buffer_pop
+ *
+ * @brief   Get a data from the ring buffer.
+ *
+ * @return  the Data
+ */
+uint8_t ring_buffer_pop()
+{
+    uint8_t data = ring_buffer.buffer[ring_buffer.SendPos];
+
+    ring_buffer.SendPos++;
+    if (ring_buffer.SendPos >= RING_BUFFER_LEN)
+    {
+        ring_buffer.SendPos = 0;
+    }
+    ring_buffer.RemainCount--;
+    return data;
+}
+
 
 /*********************************************************************
  * @fn      protocol_poll
@@ -185,12 +297,12 @@ const char *protocol_poll(void)
         return NULL;
     }
 
-    /* Scan from head for '\n' */
+    /* Scan from head for '\n' or '\r' (line delimiter) */
     pos = head;
     len = 0;
     while (pos != tail)
     {
-        if (rx_buf[pos] == '\n')
+        if (rx_buf[pos] == '\n' || rx_buf[pos] == '\r')
         {
             /* Found delimiter — copy line (excluding '\n') */
             i = 0;
@@ -206,21 +318,37 @@ const char *protocol_poll(void)
             }
             line_buf[i] = '\0';
 
-            /* Advance rx_head past the '\n' */
-            head++;
-            if (head >= RX_BUF_SIZE)
             {
-                head = 0;
-            }
-            rx_head = head;
+                uint8_t delim = rx_buf[pos];
 
-            /* If line was truncated (didn't fit), return NULL */
-            if (i >= (LINE_BUF_SIZE - 1) && rx_buf[pos] != '\n')
-            {
-                return NULL;
-            }
+                /* Advance rx_head past the delimiter */
+                head++;
+                if (head >= RX_BUF_SIZE)
+                {
+                    head = 0;
+                }
 
-            return line_buf;
+                /* Handle \r\n or \n\r pair — consume the second char too */
+                if ((delim == '\r' && head != tail && rx_buf[head] == '\n') ||
+                    (delim == '\n' && head != tail && rx_buf[head] == '\r'))
+                {
+                    head++;
+                    if (head >= RX_BUF_SIZE)
+                    {
+                        head = 0;
+                    }
+                }
+
+                rx_head = head;
+
+                /* If line was truncated (didn't fit), return NULL */
+                if (i >= (LINE_BUF_SIZE - 1) && pos != rx_head)
+                {
+                    return NULL;
+                }
+
+                return line_buf;
+            }
         }
 
         pos++;
@@ -231,8 +359,8 @@ const char *protocol_poll(void)
         len++;
         if (len >= LINE_BUF_SIZE)
         {
-            /* Line too long — discard until '\n' or buffer empty */
-            while (pos != tail && rx_buf[pos] != '\n')
+            /* Line too long — discard until delimiter or buffer empty */
+            while (pos != tail && rx_buf[pos] != '\n' && rx_buf[pos] != '\r')
             {
                 pos++;
                 if (pos >= RX_BUF_SIZE)
@@ -261,7 +389,7 @@ const char *protocol_poll(void)
 /*********************************************************************
  * @fn      protocol_send
  *
- * @brief   Send a null-terminated JSON string over USART2, appending
+ * @brief   Send a null-terminated JSON string over USART1, appending
  *          '\n' as a line terminator. Blocks on USART_FLAG_TC until
  *          each byte has been transmitted.
  *
@@ -273,20 +401,20 @@ void protocol_send(const char *json_str)
 {
     while (*json_str)
     {
-        while (USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET)
+        while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET)
         {
             /* Wait for TX complete */
         }
-        USART_SendData(USART2, (uint16_t)(*json_str));
+        USART_SendData(USART1, (uint16_t)(*json_str));
         json_str++;
     }
 
     /* Append line terminator */
-    while (USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET)
+    while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET)
     {
         /* Wait for TX complete */
     }
-    USART_SendData(USART2, (uint16_t)'\n');
+    USART_SendData(USART1, (uint16_t)'\n');
 }
 
 /*********************************************************************
@@ -532,7 +660,7 @@ cleanup:
 /*********************************************************************
  * @fn      protocol_send_telemetry
  *
- * @brief   Assemble and send a cJSON telemetry packet over USART2.
+ * @brief   Assemble and send a cJSON telemetry packet over USART1.
  *          Contains: 4-channel MOS data in ch[] array, summary data
  *          in sum{} object, and flat meta fields (seq, uptime, mode,
  *          fault, dac, retry, temp). Transmitted at 10Hz via the

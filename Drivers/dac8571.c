@@ -37,11 +37,11 @@ void dac8571_init(void)
 
     if (status == I2C_OK)
     {
-        // printf("DAC8571 init: OK\r\n");
+        printf("DAC8571 init: OK\r\n");
     }
     else
     {
-        // printf("DAC8571 init: FAIL (%d)\r\n", status);
+        printf("DAC8571 init: FAIL (%d)\r\n", status);
     }
 }
 

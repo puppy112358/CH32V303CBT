@@ -59,7 +59,7 @@ main-build: CH32V303CBT.elf secondary-outputs
 CH32V303CBT.elf: $(OBJS) $(USER_OBJS_ESCAPE)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GNU RISC-V Cross C Linker'
-	riscv-none-embed-gcc -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -T "c:\GitProject\CH32V303CBT\Ld\Link.ld" -nostartfiles -Xlinker --gc-sections -Wl,-Map,"CH32V303CBT.map" --specs=nano.specs --specs=nosys.specs -o "CH32V303CBT.elf" $(OBJS) $(LIBS)
+	riscv-none-embed-gcc -march=rv32imacxw -mabi=ilp32 -msmall-data-limit=8 -msave-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common -Wunused -Wuninitialized -g -T "c:\GitProject\CH32V303CBT\Ld\Link.ld" -nostartfiles -Xlinker --gc-sections -Wl,-Map,"CH32V303CBT.map" --specs=nano.specs --specs=nosys.specs -o "CH32V303CBT.elf" $(OBJS) $(LIBS) -lprintfloat
 	@echo 'Finished building target: $@'
 	@
 CH32V303CBT.hex: CH32V303CBT.elf
