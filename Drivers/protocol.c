@@ -37,21 +37,30 @@ USART_DMA_CTRL_  USART_DMA_CTRL = {
 };
 
 /* --------------------------------------------------------------------------
- * cJSON Arena Allocator (4 KB static pool)
+ * cJSON Arena Allocator (4 KB static pool, 8-byte aligned)
+ *
+ * Alignment is CRITICAL on RV32IMAC: cJSON structs contain double fields
+ * (valuedouble) which require 8-byte alignment.  An unaligned pool causes
+ * a store/AMO access fault → HardFault → system reset.
  * -------------------------------------------------------------------------- */
 #define CJSON_POOL_SIZE 4096
-static uint8_t cjson_pool[CJSON_POOL_SIZE];
+static uint8_t cjson_pool[CJSON_POOL_SIZE] __attribute__((aligned(8)));
 static size_t  cjson_pool_used = 0;
 
 static void *cjson_arena_alloc(size_t sz)
 {
     void *ptr;
-    if (cjson_pool_used + sz > CJSON_POOL_SIZE)
+    size_t aligned_sz;
+
+    /* Round up to 8-byte boundary so every allocation starts aligned */
+    aligned_sz = (sz + 7) & ~((size_t)7);
+
+    if (cjson_pool_used + aligned_sz > CJSON_POOL_SIZE)
     {
         return NULL;
     }
     ptr = &cjson_pool[cjson_pool_used];
-    cjson_pool_used += sz;
+    cjson_pool_used += aligned_sz;
     return ptr;
 }
 
@@ -67,19 +76,10 @@ static void send_error_ack(int code, const char *msg);
 static const char *system_mode_to_string(SystemMode mode);
 
 /* --------------------------------------------------------------------------
- * Ring Buffer Variables (non-static — shared with ch32v30x_it.c ISR)
- * -------------------------------------------------------------------------- */
-volatile uint8_t  rx_buf[RX_BUF_SIZE];
-volatile uint16_t rx_head         = 0;
-volatile uint16_t rx_tail         = 0;
-volatile uint8_t  rx_overflow     = 0;
-volatile uint8_t  rx_parity_err   = 0;
-volatile uint8_t  rx_framing_err  = 0;
-
-/* --------------------------------------------------------------------------
- * Line Buffer for protocol_poll()
+ * Line Buffer for protocol_poll() — static, retains partial lines across calls.
  * -------------------------------------------------------------------------- */
 static char line_buf[LINE_BUF_SIZE];
+static uint16_t line_pos = 0;
 
 /*********************************************************************
  * @fn      protocol_init
@@ -136,12 +136,7 @@ void protocol_init(void)
     // NVIC_SetPriority(USART1_IRQn, 0x02);
     // NVIC_EnableIRQ(USART1_IRQn);
 
-    /* Zero ring buffer and error flags */
-    rx_head        = 0;
-    rx_tail        = 0;
-    rx_overflow    = 0;
-    rx_parity_err  = 0;
-    rx_framing_err = 0;
+    /* Zero ring buffer state (ring_buffer is zero-initialized at definition) */
 
     /* USART1 TX test — send known string to verify terminal baud rate */
     {
@@ -262,127 +257,55 @@ uint8_t ring_buffer_pop()
 /*********************************************************************
  * @fn      protocol_poll
  *
- * @brief   Poll the RX ring buffer for a complete newline-delimited
- *          line. If a '\n' byte is found, copies the line (excluding
- *          '\n') into line_buf, null-terminates, advances rx_head past
- *          the delimiter, and returns a pointer to line_buf.
- *          Handles overflow by flushing the ring buffer.
+ * @brief   Poll the DMA+IDLE ring buffer for a complete newline-
+ *          delimited line. Bytes are consumed one-at-a-time via
+ *          ring_buffer_pop(). When '\n' or '\r' is found, the
+ *          accumulated line (excluding the delimiter) is null-
+ *          terminated and returned.
  *
- * @return  Pointer to null-terminated line string, or NULL if no
- *          complete line is available.
+ *          Handles \r\n and \n\r line-ending pairs transparently.
+ *          Returns NULL if no complete line is available yet.
+ *
+ * @return  Pointer to null-terminated line string, or NULL.
  */
 const char *protocol_poll(void)
 {
-    uint16_t head;
-    uint16_t tail;
-    uint16_t pos;
-    uint16_t len;
-    uint16_t i;
+    uint8_t byte;
 
-    head = rx_head;
-    tail = rx_tail;
-
-    /* Buffer empty */
-    if (head == tail)
+    while (ring_buffer.RemainCount > 0)
     {
-        return NULL;
-    }
+        byte = ring_buffer_pop();
 
-    /* Overflow condition: flush ring buffer and report */
-    if (rx_overflow)
-    {
-        rx_head     = 0;
-        rx_tail     = 0;
-        rx_overflow = 0;
-        return NULL;
-    }
-
-    /* Scan from head for '\n' or '\r' (line delimiter) */
-    pos = head;
-    len = 0;
-    while (pos != tail)
-    {
-        if (rx_buf[pos] == '\n' || rx_buf[pos] == '\r')
+        if (byte == '\n' || byte == '\r')
         {
-            /* Found delimiter — copy line (excluding '\n') */
-            i = 0;
-            while (head != pos && i < (LINE_BUF_SIZE - 1))
+            /* Consume paired \r\n or \n\r */
+            if (ring_buffer.RemainCount > 0)
             {
-                line_buf[i] = (char)rx_buf[head];
-                i++;
-                head++;
-                if (head >= RX_BUF_SIZE)
+                uint8_t next = ring_buffer.buffer[ring_buffer.SendPos];
+                if ((byte == '\r' && next == '\n') ||
+                    (byte == '\n' && next == '\r'))
                 {
-                    head = 0;
+                    ring_buffer_pop();
                 }
             }
-            line_buf[i] = '\0';
 
+            line_buf[line_pos] = '\0';
+            line_pos = 0;
+
+            /* Return non-empty lines only (skip blank lines) */
+            if (line_buf[0] != '\0')
             {
-                uint8_t delim = rx_buf[pos];
-
-                /* Advance rx_head past the delimiter */
-                head++;
-                if (head >= RX_BUF_SIZE)
-                {
-                    head = 0;
-                }
-
-                /* Handle \r\n or \n\r pair — consume the second char too */
-                if ((delim == '\r' && head != tail && rx_buf[head] == '\n') ||
-                    (delim == '\n' && head != tail && rx_buf[head] == '\r'))
-                {
-                    head++;
-                    if (head >= RX_BUF_SIZE)
-                    {
-                        head = 0;
-                    }
-                }
-
-                rx_head = head;
-
-                /* If line was truncated (didn't fit), return NULL */
-                if (i >= (LINE_BUF_SIZE - 1) && pos != rx_head)
-                {
-                    return NULL;
-                }
-
                 return line_buf;
             }
         }
-
-        pos++;
-        if (pos >= RX_BUF_SIZE)
+        else if (line_pos < (LINE_BUF_SIZE - 1))
         {
-            pos = 0;
+            line_buf[line_pos++] = (char)byte;
         }
-        len++;
-        if (len >= LINE_BUF_SIZE)
-        {
-            /* Line too long — discard until delimiter or buffer empty */
-            while (pos != tail && rx_buf[pos] != '\n' && rx_buf[pos] != '\r')
-            {
-                pos++;
-                if (pos >= RX_BUF_SIZE)
-                {
-                    pos = 0;
-                }
-            }
-            if (pos != tail)
-            {
-                /* Skip past the '\n' */
-                pos++;
-                if (pos >= RX_BUF_SIZE)
-                {
-                    pos = 0;
-                }
-            }
-            rx_head = pos;
-            return NULL;
-        }
+        /* else: byte discarded — line exceeds LINE_BUF_SIZE;
+         * line_pos reset at next delimiter */
     }
 
-    /* No '\n' found */
     return NULL;
 }
 
@@ -511,7 +434,12 @@ void protocol_process_command(const char *line)
     root = cJSON_Parse(line);
     if (root == NULL)
     {
-        send_error_ack(PROTO_ERR_PARSE_SYNTAX, "Invalid JSON syntax");
+        /* Silently ignore parse failures — they are almost always caused
+         * by line noise on a floating RX pin, not by real commands.
+         * Diagnostics go to CDC (printf), not UART1, to keep the command
+         * channel clean. */
+        printf("[PROTO] parse err (len=%u): ", (unsigned)strlen(line));
+        printf("%s\r\n", line);
         return; /* no cJSON_Delete needed — root is NULL */
     }
 
@@ -735,6 +663,75 @@ void protocol_send_telemetry(float summary_v, float summary_i, float summary_p,
     }
 
     /* Cleanup */
+    cJSON_Delete(root);
+    cjson_pool_used = 0; /* Reset arena for next cycle */
+}
+
+/*********************************************************************
+ * @fn      cdc_send_telemetry
+ *
+ * @brief   Assemble and send a lightweight cJSON telemetry packet
+ *          over USB-CDC (via printf) at 10 Hz.
+ *
+ *          Packet fields:
+ *            seq      - monotonic sequence number
+ *            mode     - "IDLE" / "CV" / "CC" / "FAULT"
+ *            setpoint - target voltage (CV) or current (CC)
+ *            v        - bus voltage (placeholder until INA226 active)
+ *            i        - bus current (placeholder until INA226 active)
+ *            p        - bus power   (placeholder until INA226 active)
+ *
+ * @return  none
+ */
+void cdc_send_telemetry(void)
+{
+    cJSON *root;
+    char *json_str;
+    static uint16_t cdc_seq = 0;
+    float setpoint;
+
+    /* Reset cJSON arena before assembly */
+    cjson_pool_used = 0;
+
+    root = cJSON_CreateObject();
+    if (root == NULL) return;
+
+    cJSON_AddNumberToObject(root, "seq", (double)cdc_seq++);
+
+    if (system_mode == MODE_CV)
+    {
+        cJSON_AddStringToObject(root, "mode", "CV");
+        setpoint = cv_target_voltage;
+    }
+    else if (system_mode == MODE_CC)
+    {
+        cJSON_AddStringToObject(root, "mode", "CC");
+        setpoint = cc_target_current;
+    }
+    else if (system_mode == MODE_FAULT)
+    {
+        cJSON_AddStringToObject(root, "mode", "FAULT");
+        setpoint = 0.0f;
+    }
+    else
+    {
+        cJSON_AddStringToObject(root, "mode", "IDLE");
+        setpoint = 0.0f;
+    }
+
+    cJSON_AddNumberToObject(root, "setpoint", (double)setpoint);
+
+    /* Placeholder values — INA226 not yet active */
+    cJSON_AddNumberToObject(root, "v", 0.0);
+    cJSON_AddNumberToObject(root, "i", 0.0);
+    cJSON_AddNumberToObject(root, "p", 0.0);
+
+    json_str = cJSON_PrintUnformatted(root);
+    if (json_str != NULL)
+    {
+        printf("%s\r\n", json_str);
+    }
+
     cJSON_Delete(root);
     cjson_pool_used = 0; /* Reset arena for next cycle */
 }

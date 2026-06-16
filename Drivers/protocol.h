@@ -105,6 +105,7 @@ void protocol_process_command(const char *line);
 uint8_t ring_buffer_pop();
 void ring_buffer_push_huge(uint8_t *buffer, uint16_t len);
 void DMA_INIT(void);
+void cdc_send_telemetry(void);
 
 
 #ifdef __cplusplus

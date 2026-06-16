@@ -138,21 +138,10 @@ static void softstart_engage(uint16_t target_dac)
  */
 void engage_cv(float target_voltage)
 {
-    float bus_v;
-    float output;
-
     system_mode = MODE_CV;
     cv_target_voltage = target_voltage;
-
-    bus_v = 0.0f;
-    ina226_get_bus_voltage(&devs[4], &bus_v);
-    output = pid_compute(&pid_cv, cv_target_voltage, bus_v, 0.1f);
-
-    softstart_engage((uint16_t)output);
-
-    pid_set_integral(&pid_cv, pid_cv.output);
-
-    printf("Engage CV: target=%.2fV DAC=%u\r\n", target_voltage, (uint16_t)pid_cv.output);
+    last_dac_value = 0; /* hardware not active yet */
+    printf("[CV] target=%.2fV\r\n", target_voltage);
 }
 
 /*********************************************************************
@@ -168,21 +157,10 @@ void engage_cv(float target_voltage)
  */
 void engage_cc(float target_current)
 {
-    float bus_i;
-    float output;
-
     system_mode = MODE_CC;
     cc_target_current = target_current;
-
-    bus_i = 0.0f;
-    ina226_get_current(&devs[4], &bus_i);
-    output = pid_compute(&pid_cc, cc_target_current, bus_i, 0.1f);
-
-    softstart_engage((uint16_t)output);
-
-    pid_set_integral(&pid_cc, pid_cc.output);
-
-    printf("Engage CC: target=%.2fA DAC=%u\r\n", target_current, (uint16_t)pid_cc.output);
+    last_dac_value = 0; /* hardware not active yet */
+    printf("[CC] target=%.2fA\r\n", target_current);
 }
 
 /*********************************************************************
@@ -244,6 +222,7 @@ int main(void)
      * then full TX+RX+interrupt configuration. */
     USART_Printf_Init(115200);  /* step 1: TX-only (example pattern) */
     protocol_init();            /* step 2: TX+RX+interrupt */
+    DMA_INIT();                 /* step 3: DMA for USART1 RX (REQUIRED for IDLE+DMA reception) */
 
     /* ---- 5. INA226 Devices ---- */
     // for (i = 0; i < DEV_COUNT; i++)
@@ -308,154 +287,26 @@ int main(void)
 
     /* ==================================================================
      * Main Control Loop - 100ms cycle (10Hz)
+     *
+     * UART1 (odd parity): receive cJSON set_mode CV/CC commands
+     * USB-CDC:            send cJSON telemetry at 10 Hz
      * ================================================================== */
     while (1)
     {
-        if (ring_buffer.RemainCount > 0)
+        /* ---- Poll USART1 for cJSON commands ---- */
         {
-            printf("recv %d >>>\n", ring_buffer.RemainCount);
-            while (ring_buffer.RemainCount > 0)
+            const char *cmd_line = protocol_poll();
+            if (cmd_line != NULL)
             {
-                printf("%c", ring_buffer_pop());
+                protocol_process_command(cmd_line);
             }
-            printf("\n<<<\n");
         }
-        Delay_Ms(1000);
-        // extern volatile uint16_t rx_head, rx_tail;
 
-        // Delay_Ms(CONTROL_PERIOD_MS);
-        // cycle_count++;
+        /* ---- Send telemetry over USB-CDC at 10 Hz ---- */
+        cdc_send_telemetry();
 
-        /* Heartbeat + dump raw buffer when data arrives */
-        // if ((cycle_count % 10) == 0)
-        // {
-        //     extern volatile uint16_t rx_head, rx_tail;
-        //     extern volatile uint8_t rx_buf[512];
-        //     uint16_t count = (rx_tail - rx_head) % RX_BUF_SIZE;
-        //     printf("[%lu] h=%u t=%u cnt=%u |", cycle_count, rx_head, rx_tail, count);
-        //     if (count > 0)
-        //     {
-        //         uint16_t j;
-        //         for (j = 0; j < count && j < 20; j++)
-        //         {
-        //             uint8_t c = rx_buf[(rx_head + j) % RX_BUF_SIZE];
-        //             printf(" %02X", c);
-        //         }
-        //     }
-        //     printf("\r\n");
-        // }
-
-
-        /* 0. Poll USART1 commands */
-        // {
-        //     const char *cmd_line = protocol_poll();
-        //     if (cmd_line != NULL)
-        //     {
-        //         protocol_process_command(cmd_line);
-        //     }
-        // }
-
-        /* 1. Read summary INA226 - skip if absent */
-        // bus_v = 0.0f; bus_i = 0.0f; bus_p = 0.0f;
-        // if (dev_ok[4])
-        // {
-        //     ina226_get_bus_voltage(&devs[4], &bus_v);
-        //     ina226_get_current(&devs[4], &bus_i);
-        //     ina226_get_power(&devs[4], &bus_p);
-        // }
-
-        /* 2. Read MOS channels - skip failed */
-        // for (i = 0; i < 4; i++)
-        // {
-        //     mos_i[i] = 0.0f; mos_v[i] = 0.0f;
-        //     if (dev_ok[i])
-        //     {
-        //         ina226_get_current(&devs[i], &mos_i[i]);
-        //         ina226_get_bus_voltage(&devs[i], &mos_v[i]);
-        //     }
-        // }
-
-        /* 3. Fault check */
-        // if (fault_triggered)
-        // {
-        //     system_mode = MODE_FAULT;
-        //     fault_handler_hw(fault_source_mask);
-        //     if (dac_ok) dac8571_set_output(0);
-        //     last_dac_value = 0;
-        //     fault_print_snapshot(&fault_reg, 0, MODE_FAULT);
-        //     fault_triggered = 0;
-        // }
-
-        /* 4. OPP */
-        // if (bus_p > RATED_WATTAGE && system_mode != MODE_FAULT)
-        // {
-        //     fault_handler_opp();
-        //     if (dac_ok) dac8571_set_output(0);
-        //     last_dac_value = 0;
-        //     fault_print_snapshot(&fault_reg, last_dac_value, system_mode);
-        //     system_mode = MODE_FAULT;
-        // }
-
-        /* 5. PID dispatch */
-        // if (system_mode == MODE_CV && !fault_triggered)
-        // {
-        //     float output = pid_compute(&pid_cv, cv_target_voltage, bus_v, 0.1f);
-        //     last_dac_value = (uint16_t)output;
-        //     if (dac_ok) dac8571_set_output(last_dac_value);
-        // }
-        // else if (system_mode == MODE_CC && !fault_triggered)
-        // {
-        //     float output = pid_compute(&pid_cc, cc_target_current, bus_i, 0.1f);
-        //     last_dac_value = (uint16_t)output; 
-        //     if (dac_ok) dac8571_set_output(last_dac_value);
-        // }
-
-        /* 6. Fault state machine */
-        // if (system_mode == MODE_FAULT)
-        // {
-        //     fault_state_machine();
-        // }
-
-        /* 7. USART1 Telemetry - disabled for DAC testing phase */
-        /* TODO: re-enable when cJSON memory is stable */
-        /* if (cycle_count > 100) protocol_send_telemetry(...); */
-
-        /* 8. Fault-free counter */
-        // if (system_mode != MODE_FAULT)
-        // {
-        //     fault_free_ms += CONTROL_PERIOD_MS;
-        //     if (fault_free_ms >= FAULT_FREE_RESET_MS)
-        //     {
-        //         fault_reg.bits.retry_count = 0;
-        //         fault_free_ms = 0;
-        //     }
-        // }
-        // else
-        // {
-        //     fault_free_ms = 0;
-        // }
-
-        /* 9. Calibration check (delayed, only for present devices) */
-        // if ((cycle_count % 10) == 0 && cycle_count > 100)
-        // {
-        //     for (i = 0; i < DEV_COUNT; i++)
-        //     {
-        //         uint16_t cal_val = 0;
-        //         if (!dev_ok[i]) continue;
-        //         if (ina226_read_calibration(&devs[i], &cal_val) != I2C_OK)
-        //             continue;
-        //         if (cal_val == 0)
-        //         {
-        //             float check_v = 0.0f;
-        //             if (ina226_get_bus_voltage(&devs[i], &check_v) == I2C_OK
-        //                 && check_v > 0.1f)
-        //             {
-        //                 printf("[PROT-04] CH%d cal=0 re-init\r\n", devs[i].channel);
-        //                 ina226_init(&devs[i]);
-        //             }
-        //         }
-        //     }
-        // }
+        cycle_count++;
+        Delay_Ms(CONTROL_PERIOD_MS);
     }
 }
 /*********************************************************************

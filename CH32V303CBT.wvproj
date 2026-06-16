@@ -11,9 +11,11 @@
 			"mcu": "CH32V303CBT6",
 			"description": "Website: http://www.wch.cn/products/CH32V303.html?\\nROM(byte): 128K, SRAM(byte): 32K, CHIP PINS: 48, GPIO PORTS: 37.\\nWCH CH32V3 series of mainstream MCUs covers the needs of a large variety of applications in the industrial,medical and consumer markets. High performance with first-class peripherals and low-power,low-voltage operation is paired with a high level of integration at accessible prices with a simple architecture and easy-to-use tools.",
 			"tempratureScope": "CH32V303CBT6{-40℃~85℃}",
+			"artifactType": "executable",
 			"link": "WCH-Link",
 			"peripheral_version": "2.9",
-			"calibrateSupport": false
+			"calibrateSupport": false,
+			"calibrateCommand": ""
 		},
 		"linkedFolders": [],
 		"removedResources": [
@@ -44,7 +46,8 @@
 				"post_script_description": "",
 				"excludeResources": [
 					"${project}/Startup/startup_ch32v30x_D8C.S",
-					"${project}/example"
+					"${project}/example",
+					"${project}/DAC8571_I2C模式_STM32"
 				],
 				"optimization": {
 					"level": "size",
@@ -221,7 +224,7 @@
 						"use_float_with_nano_scanf": false,
 						"do_not_use_syscalls": true,
 						"verbose": false,
-						"use_wch_printffloat": false,
+						"use_wch_printffloat": true,
 						"use_wch_printf": false,
 						"use_iqmath": false,
 						"other_linker_flags": ""
@@ -257,7 +260,7 @@
 						"use_float_with_nano_scanf": false,
 						"do_not_use_syscalls": true,
 						"verbose": false,
-						"use_wch_printffloat": false,
+						"use_wch_printffloat": true,
 						"use_wch_printf": false,
 						"use_iqmath": false,
 						"other_linker_flags": ""
@@ -403,7 +406,7 @@
 			"showDebugOutputTimestamps": true
 		},
 		"reserve": {
-			"PROGRAM_NAME": "obj\\CH32V303CBT.elf",
+			"PROGRAM_NAME": "obj/CH32V303CBT.elf",
 			"PROJECT_ATTR": "CH32V303CBT",
 			"PROJECT_BUILD_CONFIG_AUTO_ATTR": true,
 			"PROJECT_BUILD_CONFIG_ID_ATTR": "",
