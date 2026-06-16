@@ -311,7 +311,7 @@ static const char *parse_value(cJSON *item, const char *value)
 
     switch (*value)
     {
-        case '\"': return (const char *)parse_string(item, value, &value);
+        case '\"': parse_string(item, value, &value); return value;
         case '{':  return parse_object(item, value);
         case '[':  return parse_array(item, value);
         case 't':

@@ -434,13 +434,9 @@ void protocol_process_command(const char *line)
     root = cJSON_Parse(line);
     if (root == NULL)
     {
-        /* Silently ignore parse failures — they are almost always caused
-         * by line noise on a floating RX pin, not by real commands.
-         * Diagnostics go to CDC (printf), not UART1, to keep the command
-         * channel clean. */
-        printf("[PROTO] parse err (len=%u): ", (unsigned)strlen(line));
-        printf("%s\r\n", line);
-        return; /* no cJSON_Delete needed — root is NULL */
+        printf("[PROTO] parse err: %s\r\n", line);
+        cjson_pool_used = 0; /* reset arena for partial allocs on failure */
+        return;             /* no cJSON_Delete needed — root is NULL */
     }
 
     /* Step 2: Extract "cmd" field */
@@ -694,7 +690,11 @@ void cdc_send_telemetry(void)
     cjson_pool_used = 0;
 
     root = cJSON_CreateObject();
-    if (root == NULL) return;
+    if (root == NULL)
+    {
+        cjson_pool_used = 0;
+        return;
+    }
 
     cJSON_AddNumberToObject(root, "seq", (double)cdc_seq++);
 
