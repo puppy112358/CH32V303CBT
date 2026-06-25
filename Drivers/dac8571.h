@@ -30,7 +30,9 @@ void dac8571_init(void);
  *
  * value: 16-bit DAC code (0-65535).
  *        0 = VOUT = 0V, 65535 = VOUT ≈ VREF.
- *        The DAC latches the output on the falling edge of ACK after LSB.
+ *        Sends 3-byte I2C write: control byte 0x10 (normal mode),
+ *        MSB, LSB. The DAC latches output on falling edge of ACK
+ *        after LSB per datasheet.
  *
  * Returns I2C_OK on success, or i2c_status_t error code. */
 i2c_status_t dac8571_set_output(uint16_t value);

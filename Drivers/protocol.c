@@ -12,6 +12,8 @@
 #include "debug.h"
 #include "../Drivers/cjson/cJSON.h"
 #include "../Drivers/temp_sensor.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
@@ -72,8 +74,27 @@ static void cjson_arena_free(void *ptr)
 /* --------------------------------------------------------------------------
  * Forward Declarations (static helpers)
  * -------------------------------------------------------------------------- */
-static void send_error_ack(int code, const char *msg);
+static void send_error_ack(uint16_t cmd_id, int code, const char *msg);
+static void send_response_ok(uint16_t cmd_id);
+static int  protocol_parse_frame(const char *line, char chip_id_out[9],
+                                 uint16_t *cmd_id_out, const char **json_start);
 static const char *system_mode_to_string(SystemMode mode);
+
+/* --------------------------------------------------------------------------
+ * Local Chip ID — 8-char hex string from DBGMCU_GetCHIPID(), set at init.
+ * -------------------------------------------------------------------------- */
+static char local_chip_id_str[9] = "00000000";
+
+/* --------------------------------------------------------------------------
+ * Stored Targets — persisted across mode switches, set by command 101.
+ * -------------------------------------------------------------------------- */
+static float stored_cc_target = 0.0f;   /* Last-received CC target (amps) */
+static float stored_cv_target = 0.0f;   /* Last-received CV target (volts) */
+
+/* --------------------------------------------------------------------------
+ * Frame Assembly Buffer — static, shared by send_response_ok / send_error_ack.
+ * -------------------------------------------------------------------------- */
+static char frame_buf[LINE_BUF_SIZE];
 
 /* --------------------------------------------------------------------------
  * Line Buffer for protocol_poll() — static, retains partial lines across calls.
@@ -157,11 +178,33 @@ void protocol_init(void)
         cJSON_InitHooks(&hooks);
     }
 
+    /* Capture local chip ID as 8-char hex string for frame routing */
+    {
+        uint32_t chip_id = DBGMCU_GetCHIPID();
+        snprintf(local_chip_id_str, sizeof(local_chip_id_str),
+                 "%08lX", (unsigned long)chip_id);
+    }
+
     printf("Protocol init: USART1 115200 8N1 (no parity), ring buffer %d bytes\r\n",
            RX_BUF_SIZE);
-    printf("cJSON arena: %d bytes at 0x%08X\r\n",
-           CJSON_POOL_SIZE, (uint32_t)(uintptr_t)cjson_pool);
+    printf("cJSON arena: %d bytes at 0x%08X, chip ID: %s\r\n",
+           CJSON_POOL_SIZE, (uint32_t)(uintptr_t)cjson_pool,
+           local_chip_id_str);
 }
+
+/*********************************************************************
+ * @fn      protocol_get_local_chip_id
+ *
+ * @brief   Return the local chip ID as an 8-character hex string.
+ *          Initialized by protocol_init() from DBGMCU_GetCHIPID().
+ *
+ * @return  Pointer to null-terminated 8-char hex string
+ */
+const char *protocol_get_local_chip_id(void)
+{
+    return local_chip_id_str;
+}
+
 /*********************************************************************
  * @fn      DMA_INIT
  *
@@ -362,222 +405,376 @@ static const char *system_mode_to_string(SystemMode mode)
 }
 
 /*********************************************************************
- * @fn      send_error_ack
+ * @fn      protocol_parse_frame
  *
- * @brief   Build and send a standard JSON error acknowledgment.
- *          Format: {"ack":"error","code":N,"msg":"description"}
+ * @brief   Parse the frame header <chip_id,cmd_id> from a received line.
+ *          Format: <XXXXXXXX,NNN>{json...}
  *
- * @param   code - Numeric error code (1xx/2xx/3xx)
- * @param   msg  - Human-readable error description
+ * @param   line         - Null-terminated input line
+ * @param   chip_id_out  - Output buffer for 8-char chip ID (null-terminated)
+ * @param   cmd_id_out   - Output parsed command ID (101, 102, 200, etc.)
+ * @param   json_start   - Output pointer to first char after '>'
+ *
+ * @return  0 on success, negative on parse error:
+ *          -1 = missing '<' prefix
+ *          -2 = chip ID too short or missing
+ *          -3 = missing ',' separator
+ *          -4 = invalid command ID
+ *          -5 = missing '>' suffix
+ */
+static int protocol_parse_frame(const char *line, char chip_id_out[9],
+                                uint16_t *cmd_id_out, const char **json_start)
+{
+    const char *p;
+    int i;
+    uint16_t cmd;
+
+    if (line == NULL || line[0] != PROTO_FRAME_PREFIX)
+    {
+        return -1;
+    }
+
+    p = line + 1;  /* skip '<' */
+
+    /* Extract 8-char chip ID */
+    for (i = 0; i < PROTO_CHIP_ID_LEN; i++)
+    {
+        if (p[i] == '\0' || p[i] == PROTO_FRAME_SEPARATOR
+            || p[i] == PROTO_FRAME_SUFFIX)
+        {
+            return -2;  /* chip ID too short */
+        }
+        chip_id_out[i] = p[i];
+    }
+    chip_id_out[PROTO_CHIP_ID_LEN] = '\0';
+    p += PROTO_CHIP_ID_LEN;
+
+    /* Expect ',' separator */
+    if (*p != PROTO_FRAME_SEPARATOR)
+    {
+        return -3;
+    }
+    p++;
+
+    /* Parse 3-digit command ID */
+    cmd = 0;
+    for (i = 0; i < 3; i++)
+    {
+        if (p[i] < '0' || p[i] > '9')
+        {
+            return -4;
+        }
+        cmd = (uint16_t)(cmd * 10 + (p[i] - '0'));
+    }
+    *cmd_id_out = cmd;
+    p += 3;
+
+    /* Expect '>' suffix */
+    if (*p != PROTO_FRAME_SUFFIX)
+    {
+        return -5;
+    }
+    p++;
+
+    *json_start = p;
+    return 0;
+}
+
+/*********************************************************************
+ * @fn      send_response_ok
+ *
+ * @brief   Build and send a success response frame.
+ *          Format: <local_chip_id,200>{"command":"<cmd_id>","ack":"ok"}
+ *
+ * @param   cmd_id - The command ID being acknowledged
  *
  * @return  none
  */
-static void send_error_ack(int code, const char *msg)
+static void send_response_ok(uint16_t cmd_id)
 {
-    cJSON *err;
-    char *str;
+    int len;
 
-    err = cJSON_CreateObject();
-    if (err == NULL) return;
-
-    cJSON_AddStringToObject(err, "ack", "error");
-    cJSON_AddNumberToObject(err, "code", code);
-    cJSON_AddStringToObject(err, "msg", msg);
-
-    str = cJSON_PrintUnformatted(err);
-    if (str != NULL)
+    len = snprintf(frame_buf, sizeof(frame_buf),
+                   "<%s,%d>{\"command\":\"%d\",\"ack\":\"ok\"}",
+                   local_chip_id_str, PROTO_CMD_RESPONSE, cmd_id);
+    if (len > 0 && len < (int)sizeof(frame_buf))
     {
-        protocol_send(str);
+        protocol_send(frame_buf);
     }
+}
 
-    cJSON_Delete(err);
+/*********************************************************************
+ * @fn      send_error_ack
+ *
+ * @brief   Build and send a standard JSON error acknowledgment frame.
+ *          Format: <local_chip_id,200>{"command":"<cmd_id>","ack":"error",
+ *                                       "code":"<code>","msg":"<description>"}
+ *
+ *          All field values are strings per protocol specification.
+ *
+ * @param   cmd_id - The command ID being responded to
+ * @param   code   - Numeric error code (1xx/2xx/3xx)
+ * @param   msg    - Human-readable error description
+ *
+ * @return  none
+ */
+static void send_error_ack(uint16_t cmd_id, int code, const char *msg)
+{
+    int len;
+
+    len = snprintf(frame_buf, sizeof(frame_buf),
+                   "<%s,%d>{\"command\":\"%d\",\"ack\":\"error\","
+                   "\"code\":\"%d\",\"msg\":\"%s\"}",
+                   local_chip_id_str, PROTO_CMD_RESPONSE,
+                   cmd_id, code, msg);
+    if (len > 0 && len < (int)sizeof(frame_buf))
+    {
+        protocol_send(frame_buf);
+    }
 }
 
 /*********************************************************************
  * @fn      protocol_process_command
  *
- * @brief   Parse a received JSON command line, validate fields, check
- *          state gates, dispatch to engage_cv/engage_cc/fault_clear,
- *          and send an acknowledgment or error response.
+ * @brief   Parse a received frame <chip_id,cmd_id>{json}, validate
+ *          chip ID for downlink commands, dispatch to numeric command
+ *          handlers, and send a framed acknowledgment or error response.
  *
- *          Supported commands:
- *            set_mode    — switch to CV or CC with engineering-unit value
- *            clear_fault — transition FAULT→IDLE (fault_clear)
- *            get_status  — return runtime state as JSON
- *            get_info    — return static system info as JSON
+ *          Supported commands (numeric):
+ *            101  POWER_SET  — set I/V targets for current mode
+ *            102  MODE_SET   — switch operating mode (CC/CV/Type-C)
+ *            200  RESPONSE   — uplink response (forwarded upstream)
  *
- * @param   line - Null-terminated command string (JSON)
+ *          All JSON field values are strings per protocol specification.
+ *
+ * @param   line - Null-terminated command string (frame)
  *
  * @return  none
  */
 void protocol_process_command(const char *line)
 {
-    cJSON *root;
-    cJSON *cmd_item;
-    cJSON *mode_item;
-    cJSON *value_item;
-    cJSON *response;
-    char *response_str;
-    const char *cmd;
-    float value;
+    char        frame_chip_id[9];
+    uint16_t    cmd_id;
+    const char *json_start;
+    cJSON      *root;
+    cJSON      *item;
+    int         parse_ret;
+    int         ival;
+    float       fval;
 
-    root     = NULL;
-    cmd_item = NULL;
-    mode_item = NULL;
-    value_item = NULL;
-    response   = NULL;
-    response_str = NULL;
-    cmd = NULL;
-    value = 0.0f;
+    frame_chip_id[0] = '\0';
+    cmd_id    = 0;
+    json_start = NULL;
+    root      = NULL;
+    item      = NULL;
 
-    /* Step 1: Parse JSON */
-    root = cJSON_Parse(line);
+    /* Step 1: Parse frame header <chip_id,cmd_id> */
+    parse_ret = protocol_parse_frame(line, frame_chip_id, &cmd_id, &json_start);
+    if (parse_ret != 0)
+    {
+        printf("[PROTO] frame err %d: %s\r\n", parse_ret, line);
+        return;
+    }
+
+    /* Step 2: Chip ID gate — downlink (1xxx) must match local chip ID.
+     *          Uplink (2xxx) passes through without filtering. */
+    if (cmd_id >= 100 && cmd_id < 200)
+    {
+        if (strcmp(frame_chip_id, local_chip_id_str) != 0)
+        {
+            /* Not addressed to this node — silently ignore */
+            return;
+        }
+    }
+
+    /* Step 3: Parse JSON body */
+    root = cJSON_Parse(json_start);
     if (root == NULL)
     {
-        printf("[PROTO] parse err: %s\r\n", line);
-        cjson_pool_used = 0; /* reset arena for partial allocs on failure */
-        return;             /* no cJSON_Delete needed — root is NULL */
+        printf("[PROTO] json parse err: %s\r\n", json_start);
+        send_error_ack(cmd_id, PROTO_ERR_PARSE_SYNTAX, "Invalid JSON");
+        cjson_pool_used = 0;
+        return;
     }
 
-    /* Step 2: Extract "cmd" field */
-    cmd_item = cJSON_GetObjectItem(root, "cmd");
-    if (cmd_item == NULL || !(cmd_item->type & cJSON_String))
+    /* Step 4: Dispatch by numeric command ID */
+    switch (cmd_id)
     {
-        send_error_ack(PROTO_ERR_VAL_MISSING, "Missing required field: cmd");
-        goto cleanup;
-    }
-    cmd = cmd_item->valuestring;
+    /* ------------------------------------------------------------------
+     * 101 POWER_SET — set I / V targets
+     *   JSON: {"I":"<1000*mA>","V":"<1000*mV>"}
+     *   - In CC mode: "I" field used, "V" ignored
+     *   - In CV mode: "V" field used, "I" ignored
+     *   - In IDLE:    values stored for later use by command 102
+     * ------------------------------------------------------------------ */
+    case PROTO_CMD_POWER_SET:
+    {
+        const char *i_str;
+        const char *v_str;
 
-    /* Step 3: Dispatch by command name */
-    if (strcmp(cmd, "set_mode") == 0)
-    {
         /* State gate: reject in FAULT */
         if (system_mode == MODE_FAULT)
         {
-            send_error_ack(PROTO_ERR_STATE_FAULT, "Fault active — clear fault first");
+            send_error_ack(cmd_id, PROTO_ERR_STATE_FAULT,
+                           "Fault active — clear fault first");
             goto cleanup;
         }
 
-        /* Extract mode field */
-        mode_item = cJSON_GetObjectItem(root, "mode");
-        if (mode_item == NULL || !(mode_item->type & cJSON_String))
+        /* Extract "I" field (string) */
+        item = cJSON_GetObjectItem(root, "I");
+        i_str = (item && (item->type & cJSON_String)) ? item->valuestring : NULL;
+
+        /* Extract "V" field (string) */
+        item = cJSON_GetObjectItem(root, "V");
+        v_str = (item && (item->type & cJSON_String)) ? item->valuestring : NULL;
+
+        if (system_mode == MODE_CC)
         {
-            send_error_ack(PROTO_ERR_VAL_MISSING, "Missing required field: mode");
+            if (i_str == NULL)
+            {
+                send_error_ack(cmd_id, PROTO_ERR_VAL_MISSING,
+                               "Missing field: I (required in CC mode)");
+                goto cleanup;
+            }
+            ival = atoi(i_str);
+            fval = (float)ival / 1000.0f;
+            if (fval < 0.0f || fval > HW_MAX_CURRENT)
+            {
+                send_error_ack(cmd_id, PROTO_ERR_VAL_RANGE,
+                               "I out of range [0.0, 10.0]A");
+                goto cleanup;
+            }
+            stored_cc_target = fval;
+            engage_cc(fval);
+            send_response_ok(cmd_id);
+        }
+        else if (system_mode == MODE_CV)
+        {
+            if (v_str == NULL)
+            {
+                send_error_ack(cmd_id, PROTO_ERR_VAL_MISSING,
+                               "Missing field: V (required in CV mode)");
+                goto cleanup;
+            }
+            ival = atoi(v_str);
+            fval = (float)ival / 1000.0f;
+            if (fval < 0.0f || fval > HW_MAX_VOLTAGE)
+            {
+                send_error_ack(cmd_id, PROTO_ERR_VAL_RANGE,
+                               "V out of range [0.0, 30.0]V");
+                goto cleanup;
+            }
+            stored_cv_target = fval;
+            engage_cv(fval);
+            send_response_ok(cmd_id);
+        }
+        else /* MODE_IDLE — auto-engage if I or V is non-zero */
+        {
+            if (i_str != NULL)
+            {
+                ival = atoi(i_str);
+                stored_cc_target = (float)ival / 1000.0f;
+            }
+            if (v_str != NULL)
+            {
+                ival = atoi(v_str);
+                stored_cv_target = (float)ival / 1000.0f;
+            }
+
+            /* Auto-engage: non-zero I → CC mode, non-zero V → CV mode.
+             * Both non-zero → CC takes priority (more common use case). */
+            if (stored_cc_target > 0.0f)
+            {
+                engage_cc(stored_cc_target);
+            }
+            else if (stored_cv_target > 0.0f)
+            {
+                engage_cv(stored_cv_target);
+            }
+            send_response_ok(cmd_id);
+        }
+        break;
+    }
+
+    /* ------------------------------------------------------------------
+     * 102 MODE_SET — switch operating mode
+     *   JSON: {"mode":"<code>"}
+     *    "11" = CC, "12" = CV, "20" = Type-C only, "21" = Type-C+CC
+     * ------------------------------------------------------------------ */
+    case PROTO_CMD_MODE_SET:
+    {
+        const char *mode_str;
+        int mode_code;
+
+        /* State gate: reject in FAULT */
+        if (system_mode == MODE_FAULT)
+        {
+            send_error_ack(cmd_id, PROTO_ERR_STATE_FAULT,
+                           "Fault active — clear fault first");
             goto cleanup;
         }
 
-        /* Extract value field */
-        value_item = cJSON_GetObjectItem(root, "value");
-        if (value_item == NULL || !(value_item->type & cJSON_Number))
+        item = cJSON_GetObjectItem(root, "mode");
+        if (item == NULL || !(item->type & cJSON_String))
         {
-            send_error_ack(PROTO_ERR_VAL_MISSING, "Missing required field: value");
+            send_error_ack(cmd_id, PROTO_ERR_VAL_MISSING,
+                           "Missing required field: mode");
             goto cleanup;
         }
-        value = (float)value_item->valuedouble;
+        mode_str = item->valuestring;
+        mode_code = atoi(mode_str);
 
-        /* Validate mode string */
-        if (strcmp(mode_item->valuestring, "CV") == 0)
+        switch (mode_code)
         {
-            /* Range check */
-            if (value < 0.0f || value > HW_MAX_VOLTAGE)
-            {
-                send_error_ack(PROTO_ERR_VAL_RANGE, "Value out of range [0.0, 30.0]V");
-                goto cleanup;
-            }
+            case PROTO_MODE_CC:  /* 11 — Constant Current */
+                engage_cc(stored_cc_target);
+                send_response_ok(cmd_id);
+                break;
 
-            /* Idempotency: same mode + same value → no-op ack */
-            if (system_mode == MODE_CV && fabsf(value - cv_target_voltage) < 0.01f)
-            {
-                protocol_send("{\"ack\":\"ok\"}");
-                goto cleanup;
-            }
+            case PROTO_MODE_CV:  /* 12 — Constant Voltage */
+                engage_cv(stored_cv_target);
+                send_response_ok(cmd_id);
+                break;
 
-            /* Dispatch CV engagement */
-            engage_cv(value);
-            protocol_send("{\"ack\":\"ok\"}");
+            case PROTO_MODE_TYPEC_ONLY:  /* 20 */
+                send_error_ack(cmd_id, PROTO_ERR_VAL_NOT_IMPL,
+                               "Type-C only mode not implemented");
+                break;
+
+            case PROTO_MODE_TYPEC_CC:    /* 21 */
+                send_error_ack(cmd_id, PROTO_ERR_VAL_NOT_IMPL,
+                               "Type-C+CC mode not implemented");
+                break;
+
+            default:
+                send_error_ack(cmd_id, PROTO_ERR_VAL_MODE,
+                               "Invalid mode — use 11,12,20,21");
+                break;
         }
-        else if (strcmp(mode_item->valuestring, "CC") == 0)
-        {
-            /* Range check */
-            if (value < 0.0f || value > HW_MAX_CURRENT)
-            {
-                send_error_ack(PROTO_ERR_VAL_RANGE, "Value out of range [0.0, 10.0]A");
-                goto cleanup;
-            }
-
-            /* Idempotency: same mode + same value → no-op ack */
-            if (system_mode == MODE_CC && fabsf(value - cc_target_current) < 0.01f)
-            {
-                protocol_send("{\"ack\":\"ok\"}");
-                goto cleanup;
-            }
-
-            /* Dispatch CC engagement */
-            engage_cc(value);
-            protocol_send("{\"ack\":\"ok\"}");
-        }
-        else
-        {
-            send_error_ack(PROTO_ERR_VAL_MODE, "Invalid mode — use CV or CC");
-        }
+        break;
     }
-    else if (strcmp(cmd, "clear_fault") == 0)
-    {
-        /* State gate: only valid in FAULT */
-        if (system_mode != MODE_FAULT)
-        {
-            send_error_ack(PROTO_ERR_STATE_TRANSITION, "Not in fault state");
-            goto cleanup;
-        }
 
-        fault_clear();
-        protocol_send("{\"ack\":\"ok\"}");
+    /* ------------------------------------------------------------------
+     * 200 RESPONSE — uplink response from child node.
+     *   Forwarded upstream without chip-ID filtering.
+     *   Currently logged and ignored; routing TBD.
+     * ------------------------------------------------------------------ */
+    case PROTO_CMD_RESPONSE:
+    {
+        printf("[PROTO] rx response: %s\r\n", line);
+        break;
     }
-    else if (strcmp(cmd, "get_status") == 0)
-    {
-        response = cJSON_CreateObject();
-        if (response == NULL) goto cleanup;
 
-        cJSON_AddStringToObject(response, "mode",
-            system_mode_to_string(system_mode));
-        cJSON_AddNumberToObject(response, "setpoint",
-            (system_mode == MODE_CV) ? (double)cv_target_voltage
-                                     : (double)cc_target_current);
-        cJSON_AddNumberToObject(response, "dac", last_dac_value);
-        cJSON_AddNumberToObject(response, "fault_code", fault_reg.raw);
-
-        response_str = cJSON_PrintUnformatted(response);
-        if (response_str != NULL)
-        {
-            protocol_send(response_str);
-        }
-    }
-    else if (strcmp(cmd, "get_info") == 0)
-    {
-        response = cJSON_CreateObject();
-        if (response == NULL) goto cleanup;
-
-        cJSON_AddStringToObject(response, "fw_ver", FW_VERSION);
-        cJSON_AddNumberToObject(response, "chip_id",
-            (double)DBGMCU_GetCHIPID());
-        cJSON_AddNumberToObject(response, "rated_w", RATED_WATTAGE);
-        cJSON_AddNumberToObject(response, "max_v", HW_MAX_VOLTAGE);
-        cJSON_AddNumberToObject(response, "max_a", HW_MAX_CURRENT);
-
-        response_str = cJSON_PrintUnformatted(response);
-        if (response_str != NULL)
-        {
-            protocol_send(response_str);
-        }
-    }
-    else
-    {
-        send_error_ack(PROTO_ERR_VAL_CMD, "Unknown command");
+    /* ------------------------------------------------------------------
+     * Unknown command
+     * ------------------------------------------------------------------ */
+    default:
+        send_error_ack(cmd_id, PROTO_ERR_VAL_CMD, "Unknown command");
+        break;
     }
 
 cleanup:
-    if (root != NULL)     cJSON_Delete(root);
-    if (response != NULL) cJSON_Delete(response);
+    if (root != NULL) cJSON_Delete(root);
     cjson_pool_used = 0;  /* Reset arena for next cycle */
 }
 
@@ -651,11 +848,23 @@ void protocol_send_telemetry(float summary_v, float summary_i, float summary_p,
     cJSON_AddNumberToObject(sum_obj, "p", (double)summary_p);
     cJSON_AddItemToObject(root, "sum", sum_obj);
 
-    /* Print to compact JSON and transmit */
-    json_str = cJSON_PrintUnformatted(root);
-    if (json_str != NULL)
+    /* Print to compact JSON and transmit.
+     * Save/restore arena position: cJSON_PrintUnformatted leaks
+     * intermediate string buffers (free is no-op in our arena).
+     * Reclaim them immediately so the 4 KB pool stays within bounds
+     * for the large nested telemetry structure (9 meta fields +
+     * ch[4] array + sum{} object). */
     {
-        protocol_send(json_str); /* includes trailing '\n' */
+        size_t arena_snapshot = cjson_pool_used;
+
+        json_str = cJSON_PrintUnformatted(root);
+        if (json_str != NULL)
+        {
+            protocol_send(json_str); /* includes trailing '\n' */
+        }
+
+        /* Reclaim intermediate allocs from cJSON_PrintUnformatted */
+        cjson_pool_used = arena_snapshot;
     }
 
     /* Cleanup */
@@ -681,57 +890,42 @@ void protocol_send_telemetry(float summary_v, float summary_i, float summary_p,
  */
 void cdc_send_telemetry(void)
 {
-    cJSON *root;
-    char *json_str;
     static uint16_t cdc_seq = 0;
+    const char *mode_str;
     float setpoint;
+    int len;
 
-    /* Reset cJSON arena before assembly */
-    cjson_pool_used = 0;
-
-    root = cJSON_CreateObject();
-    if (root == NULL)
-    {
-        cjson_pool_used = 0;
-        return;
-    }
-
-    cJSON_AddNumberToObject(root, "seq", (double)cdc_seq++);
-
+    /* Determine mode string and active setpoint */
     if (system_mode == MODE_CV)
     {
-        cJSON_AddStringToObject(root, "mode", "CV");
+        mode_str = "CV";
         setpoint = cv_target_voltage;
     }
     else if (system_mode == MODE_CC)
     {
-        cJSON_AddStringToObject(root, "mode", "CC");
+        mode_str = "CC";
         setpoint = cc_target_current;
     }
     else if (system_mode == MODE_FAULT)
     {
-        cJSON_AddStringToObject(root, "mode", "FAULT");
+        mode_str = "FAULT";
         setpoint = 0.0f;
     }
     else
     {
-        cJSON_AddStringToObject(root, "mode", "IDLE");
+        mode_str = "IDLE";
         setpoint = 0.0f;
     }
 
-    cJSON_AddNumberToObject(root, "setpoint", (double)setpoint);
-
-    /* Placeholder values — INA226 not yet active */
-    cJSON_AddNumberToObject(root, "v", 0.0);
-    cJSON_AddNumberToObject(root, "i", 0.0);
-    cJSON_AddNumberToObject(root, "p", 0.0);
-
-    json_str = cJSON_PrintUnformatted(root);
-    if (json_str != NULL)
+    /* Build telemetry JSON directly with snprintf — avoids cJSON arena
+     * fragmentation caused by no-op free during cJSON_PrintUnformatted. */
+    len = snprintf(frame_buf, sizeof(frame_buf),
+                   "{\"seq\":%d,\"mode\":\"%s\",\"setpoint\":%.1f,"
+                   "\"v\":%d,\"i\":%d,\"p\":%d}",
+                   (int)cdc_seq++, mode_str, (double)setpoint,
+                   0, 0, 0);
+    if (len > 0 && len < (int)sizeof(frame_buf))
     {
-        printf("%s\r\n", json_str);
+        printf("%s\r\n", frame_buf);
     }
-
-    cJSON_Delete(root);
-    cjson_pool_used = 0; /* Reset arena for next cycle */
 }

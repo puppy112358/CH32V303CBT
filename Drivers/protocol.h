@@ -24,11 +24,38 @@ extern "C" {
 #define LINE_BUF_SIZE 256   /* Max extracted line length */
 
 /* --------------------------------------------------------------------------
+ * Frame Format — <chip_id,cmd_id>{json}
+ * -------------------------------------------------------------------------- */
+#define PROTO_FRAME_PREFIX     '<'   /* Frame start marker */
+#define PROTO_FRAME_SUFFIX     '>'   /* Frame header end marker */
+#define PROTO_FRAME_SEPARATOR  ','   /* chip_id / cmd_id separator */
+#define PROTO_CHIP_ID_LEN      8     /* 8-char hex chip ID string */
+
+/* --------------------------------------------------------------------------
+ * Command Codes — 1xxx = Downlink (下发), 2xxx = Uplink (上报)
+ * -------------------------------------------------------------------------- */
+#define PROTO_CMD_POWER_SET   101    /* Power command: {"I":"...","V":"..."}  */
+#define PROTO_CMD_MODE_SET    102    /* Mode command:  {"mode":"..."}         */
+
+#define PROTO_CMD_RESPONSE    200    /* Response:      {"command":"..."}      */
+
+/* --------------------------------------------------------------------------
+ * Mode Codes — for command 102 "mode" field value (string)
+ * -------------------------------------------------------------------------- */
+#define PROTO_MODE_CC         11     /* Constant Current mode                  */
+#define PROTO_MODE_CV         12     /* Constant Voltage mode                  */
+#define PROTO_MODE_TYPEC_ONLY 20     /* Type-C trigger only (not implemented) */
+#define PROTO_MODE_TYPEC_CC   21     /* Type-C trigger + CC (not implemented) */
+
+/* --------------------------------------------------------------------------
  * Error Codes — Parse Phase (1xx)
  * -------------------------------------------------------------------------- */
 #define PROTO_ERR_PARSE_SYNTAX      101   /* Invalid JSON syntax */
 #define PROTO_ERR_PARSE_INCOMPLETE  102   /* Incomplete JSON */
 #define PROTO_ERR_PARSE_OVERFLOW    103   /* RX buffer overflow */
+#define PROTO_ERR_PARSE_FRAME       110   /* Invalid frame format <...> */
+#define PROTO_ERR_PARSE_CHIPID      111   /* Invalid chip ID in frame */
+#define PROTO_ERR_PARSE_CMDID       112   /* Invalid command ID in frame */
 #define USART_RX_CH         DMA1_Channel5
 
 /* --------------------------------------------------------------------------
@@ -39,6 +66,7 @@ extern "C" {
 #define PROTO_ERR_VAL_MODE          203   /* Invalid mode string */
 #define PROTO_ERR_VAL_CMD           204   /* Unknown command */
 #define PROTO_ERR_VAL_TYPE          205   /* Bad field type */
+#define PROTO_ERR_VAL_NOT_IMPL      206   /* Feature not implemented */
 
 /* --------------------------------------------------------------------------
  * Error Codes — State Rejection (3xx)
@@ -106,6 +134,10 @@ uint8_t ring_buffer_pop();
 void ring_buffer_push_huge(uint8_t *buffer, uint16_t len);
 void DMA_INIT(void);
 void cdc_send_telemetry(void);
+
+/* Return the local chip ID as an 8-character hex string (null-terminated).
+ * Initialized by protocol_init() from DBGMCU_GetCHIPID(). */
+const char *protocol_get_local_chip_id(void);
 
 
 #ifdef __cplusplus

@@ -176,8 +176,8 @@ void engage_cc(float target_current)
 int main(void)
 {
     // uint8_t i;
-    // i2c_status_t init_status;
-    // i2c_status_t dac_status;
+    i2c_status_t init_status;
+    i2c_status_t dac_status;
     // float mos_v[4];
     // float mos_i[4];
     // float bus_v, bus_i, bus_p;
@@ -263,10 +263,10 @@ int main(void)
     // }
 
     /* ---- 7. DAC8571 ---- */
-    // dac8571_init();
-    // dac_status = dac8571_set_output(0);
-    // dac_ok = (dac_status == I2C_OK);
-    // printf("DAC8571 %s\r\n", dac_ok ? "OK" : "FAIL");
+    dac8571_init();
+    dac_status = dac8571_set_output(0);
+    dac_ok = (dac_status == I2C_OK);
+    printf("DAC8571 %s\r\n", dac_ok ? "OK" : "FAIL");
 
 
     /* ---- 8. PID Controllers ---- */

@@ -28,8 +28,8 @@ void dac8571_init(void)
     i2c_status_t status;
     uint8_t data[3];
 
-    /* Probe write: control=0x00 (normal mode), value=0x0000 */
-    data[0] = 0x00;
+    /* Probe write: control=0x10 (normal mode, per STM32 reference), value=0x0000 */
+    data[0] = 0x10;
     data[1] = 0x00;
     data[2] = 0x00;
 
@@ -52,7 +52,7 @@ void dac8571_init(void)
  *          code via I2C.
  *
  *          Write sequence (3 bytes, single I2C transaction):
- *            byte 0: control byte (0x00 = normal mode, update DAC)
+ *            byte 0: control byte (0x10 = normal mode, update DAC)
  *            byte 1: MSB of DAC value
  *            byte 2: LSB of DAC value
  *
@@ -67,7 +67,7 @@ i2c_status_t dac8571_set_output(uint16_t value)
 {
     uint8_t data[3];
 
-    data[0] = 0x00;                        /* Control byte: normal mode */
+    data[0] = 0x10;                        /* Control byte: normal mode (per STM32 reference) */
     data[1] = (uint8_t)(value >> 8);       /* MSB */
     data[2] = (uint8_t)(value & 0xFF);     /* LSB */
 
