@@ -18,7 +18,7 @@ extern "C" {
 #include <stdint.h>
 
 /* I2C operation timeout in milliseconds (per D-07: 5-10ms range) */
-#define I2C_TIMEOUT_MS    10
+#define I2C_TIMEOUT_MS    1000
 
 /* I2C operation status codes */
 typedef enum

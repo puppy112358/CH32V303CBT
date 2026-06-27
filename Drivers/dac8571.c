@@ -9,6 +9,7 @@
 *******************************************************************************/
 #include "../Drivers/dac8571.h"
 #include "../Drivers/i2c_util.h"
+#include "ch32v30x.h"
 #include <stdio.h>
 
 /*********************************************************************
@@ -28,6 +29,19 @@ void dac8571_init(void)
     i2c_status_t status;
     uint8_t data[3];
 
+    /* Diagnostic: show I2C bus + clock status at init time */
+    printf("DAC8571 init: addr=0x%02X, SR1=0x%04X SR2=0x%04X CTLR1=0x%04X CTLR2=0x%04X CKCFGR=0x%04X\r\n",
+           DAC8571_ADDR,
+           (unsigned int)(I2C1->STAR1 & 0xFFFF),
+           (unsigned int)(I2C1->STAR2 & 0xFFFF),
+           (unsigned int)(I2C1->CTLR1 & 0xFFFF),
+           (unsigned int)(I2C1->CTLR2 & 0xFFFF),
+           (unsigned int)(I2C1->CKCFGR & 0xFFFF));
+    printf("DAC8571 init: RCC_APB1=0x%08X APB2=0x%08X SysClk=%d\r\n",
+           (unsigned int)(RCC->APB1PCENR),
+           (unsigned int)(RCC->APB2PCENR),
+           (int)SystemCoreClock);
+
     /* Probe write: control=0x10 (normal mode, per STM32 reference), value=0x0000 */
     data[0] = 0x10;
     data[1] = 0x00;
@@ -41,7 +55,10 @@ void dac8571_init(void)
     }
     else
     {
-        printf("DAC8571 init: FAIL (%d)\r\n", status);
+        printf("DAC8571 init: FAIL (%d), SR1=0x%04X SR2=0x%04X\r\n",
+               status,
+               (unsigned int)(I2C1->STAR1 & 0xFFFF),
+               (unsigned int)(I2C1->STAR2 & 0xFFFF));
     }
 }
 

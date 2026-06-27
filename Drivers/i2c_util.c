@@ -87,9 +87,11 @@ static uint8_t i2c_has_timed_out(uint32_t start_ticks, uint32_t timeout_ms)
 
 /* Poll for an I2C event with timeout.
  * Returns I2C_OK if event detected, I2C_TIMEOUT if timeout elapsed.
- * Also returns I2C_NACK if I2C_FLAG_AF (Acknowledge Failure) is detected. */
-static i2c_status_t i2c_wait_event(uint32_t event, uint32_t start_ticks,
-                                   uint32_t timeout_ms)
+ * Also returns I2C_NACK if I2C_FLAG_AF (Acknowledge Failure) is detected.
+ *
+ * step_id: diagnostic label for timeout messages (1=EVT5, 2=EVT6, 3=EVT8). */
+static i2c_status_t i2c_wait_event_ex(uint32_t event, uint32_t start_ticks,
+                                      uint32_t timeout_ms, uint8_t step_id)
 {
     while (!I2C_CheckEvent(I2C1, event))
     {
@@ -104,6 +106,7 @@ static i2c_status_t i2c_wait_event(uint32_t event, uint32_t start_ticks,
         if (I2C_GetFlagStatus(I2C1, I2C_FLAG_BERR) == SET)
         {
             I2C_ClearFlag(I2C1, I2C_FLAG_BERR);
+            printf("I2C: BERR at step %d\r\n", step_id);
             return I2C_TIMEOUT;
         }
 
@@ -111,11 +114,16 @@ static i2c_status_t i2c_wait_event(uint32_t event, uint32_t start_ticks,
         if (I2C_GetFlagStatus(I2C1, I2C_FLAG_ARLO) == SET)
         {
             I2C_ClearFlag(I2C1, I2C_FLAG_ARLO);
+            printf("I2C: ARLO at step %d\r\n", step_id);
             return I2C_TIMEOUT;
         }
 
         if (i2c_has_timed_out(start_ticks, timeout_ms))
         {
+            printf("I2C: T/O step %d, SR1=0x%04X SR2=0x%04X\r\n",
+                   step_id,
+                   (unsigned int)(I2C1->STAR1 & 0xFFFF),
+                   (unsigned int)(I2C1->STAR2 & 0xFFFF));
             return I2C_TIMEOUT;
         }
     }
@@ -124,13 +132,19 @@ static i2c_status_t i2c_wait_event(uint32_t event, uint32_t start_ticks,
 }
 
 /* Poll for I2C_FLAG_RXNE (receive buffer not empty) with timeout.
- * Used during multi-byte reads where we need to wait for each byte. */
-static i2c_status_t i2c_wait_rxne(uint32_t start_ticks, uint32_t timeout_ms)
+ * Used during multi-byte reads where we need to wait for each byte.
+ * step_id: diagnostic label for timeout messages. */
+static i2c_status_t i2c_wait_rxne(uint32_t start_ticks, uint32_t timeout_ms,
+                                  uint8_t step_id)
 {
     while (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) == RESET)
     {
         if (i2c_has_timed_out(start_ticks, timeout_ms))
         {
+            printf("I2C: T/O step %d (RXNE), SR1=0x%04X SR2=0x%04X\r\n",
+                   step_id,
+                   (unsigned int)(I2C1->STAR1 & 0xFFFF),
+                   (unsigned int)(I2C1->STAR2 & 0xFFFF));
             return I2C_TIMEOUT;
         }
     }
@@ -153,11 +167,37 @@ static i2c_status_t i2c_write_once(uint8_t dev_addr, const uint8_t *data,
     /* Shift 7-bit address to 8-bit format with write direction bit=0 */
     addr = dev_addr << 1;
 
+    /* Step 0: Wait for BUSY flag to clear */
+    while (I2C_GetFlagStatus(I2C1, I2C_FLAG_BUSY) != RESET)
+    {
+        if (i2c_has_timed_out(start_ticks, timeout_ms))
+        {
+            printf("I2C: BUSY stuck, SR1=0x%04X SR2=0x%04X\r\n",
+                   (unsigned int)(I2C1->STAR1 & 0xFFFF),
+                   (unsigned int)(I2C1->STAR2 & 0xFFFF));
+            return I2C_TIMEOUT;
+        }
+    }
+
+    /* Reset timeout reference for the main transaction */
+    start_ticks = i2c_get_ticks();
+
     /* Step 1: Generate START */
-    I2C_GenerateSTART(I2C1, ENABLE);
+    I2C1->CTLR1 |= (1 << 8);  /* Set START bit */
+    {
+        /* Small delay, then check if hardware cleared START (means it acted) */
+        for (volatile int _d = 0; _d < 100; _d++) { __asm volatile ("nop"); }
+        uint16_t ctlr1_now = I2C1->CTLR1;
+        if (ctlr1_now & (1 << 8))
+        {
+            printf("I2C: START still set after delay, CTLR1=0x%04X SR1=0x%04X\r\n",
+                   ctlr1_now, (unsigned int)(I2C1->STAR1 & 0xFFFF));
+        }
+    }
 
     /* Step 2: Wait for EVT5 (Master Mode Selected) */
-    status = i2c_wait_event(I2C_EVENT_MASTER_MODE_SELECT, start_ticks, timeout_ms);
+    status = i2c_wait_event_ex(I2C_EVENT_MASTER_MODE_SELECT, start_ticks,
+                               timeout_ms, 1);
     if (status != I2C_OK)
     {
         I2C_GenerateSTOP(I2C1, ENABLE);
@@ -167,9 +207,12 @@ static i2c_status_t i2c_write_once(uint8_t dev_addr, const uint8_t *data,
     /* Step 3: Send 7-bit slave address with transmitter direction */
     I2C_Send7bitAddress(I2C1, addr, I2C_Direction_Transmitter);
 
+    /* Allow slave time to acknowledge address */
+    Delay_Ms(10);
+
     /* Step 4: Wait for EVT6 (Master Transmitter Mode Selected) */
-    status = i2c_wait_event(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED,
-                            start_ticks, timeout_ms);
+    status = i2c_wait_event_ex(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED,
+                               start_ticks, timeout_ms, 2);
     if (status != I2C_OK)
     {
         I2C_GenerateSTOP(I2C1, ENABLE);
@@ -179,10 +222,18 @@ static i2c_status_t i2c_write_once(uint8_t dev_addr, const uint8_t *data,
     /* Step 5-6: Send each data byte, wait for byte-transmitted */
     for (i = 0; i < len; i++)
     {
+        if (I2C_GetFlagStatus(I2C1, I2C_FLAG_TXE) == RESET)
+        {
+            printf("I2C: TXE not set before data[%d], SR1=0x%04X\r\n",
+                   (int)i, (unsigned int)(I2C1->STAR1 & 0xFFFF));
+            I2C_GenerateSTOP(I2C1, ENABLE);
+            return I2C_TIMEOUT;
+        }
+
         I2C_SendData(I2C1, data[i]);
 
-        status = i2c_wait_event(I2C_EVENT_MASTER_BYTE_TRANSMITTED,
-                                start_ticks, timeout_ms);
+        status = i2c_wait_event_ex(I2C_EVENT_MASTER_BYTE_TRANSMITTED,
+                                   start_ticks, timeout_ms, 3 + i);
         if (status != I2C_OK)
         {
             I2C_GenerateSTOP(I2C1, ENABLE);
@@ -211,13 +262,29 @@ static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
     /* Shift 7-bit address to 8-bit format */
     addr = dev_addr << 1;
 
+    /* Step 0: Wait for BUSY flag to clear */
+    while (I2C_GetFlagStatus(I2C1, I2C_FLAG_BUSY) != RESET)
+    {
+        if (i2c_has_timed_out(start_ticks, timeout_ms))
+        {
+            printf("I2C: BUSY stuck before read, SR1=0x%04X SR2=0x%04X\r\n",
+                   (unsigned int)(I2C1->STAR1 & 0xFFFF),
+                   (unsigned int)(I2C1->STAR2 & 0xFFFF));
+            return I2C_TIMEOUT;
+        }
+    }
+
+    /* Reset timeout reference for the register-pointer write phase */
+    start_ticks = i2c_get_ticks();
+
     /* ====== Phase 1: Write register pointer (no STOP) ====== */
 
     /* Step 1: Generate START */
     I2C_GenerateSTART(I2C1, ENABLE);
 
     /* Step 2: Wait for EVT5 */
-    status = i2c_wait_event(I2C_EVENT_MASTER_MODE_SELECT, start_ticks, timeout_ms);
+    status = i2c_wait_event_ex(I2C_EVENT_MASTER_MODE_SELECT, start_ticks,
+                               timeout_ms, 20);
     if (status != I2C_OK)
     {
         I2C_GenerateSTOP(I2C1, ENABLE);
@@ -227,9 +294,12 @@ static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
     /* Step 3: Send address with transmitter direction */
     I2C_Send7bitAddress(I2C1, addr, I2C_Direction_Transmitter);
 
+    /* Allow slave time to acknowledge address */
+    Delay_Ms(10);
+
     /* Step 4: Wait for EVT6 */
-    status = i2c_wait_event(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED,
-                            start_ticks, timeout_ms);
+    status = i2c_wait_event_ex(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED,
+                               start_ticks, timeout_ms, 21);
     if (status != I2C_OK)
     {
         I2C_GenerateSTOP(I2C1, ENABLE);
@@ -237,16 +307,27 @@ static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
     }
 
     /* Step 5: Send register pointer byte */
+    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_TXE) == RESET)
+    {
+        printf("I2C: TXE not set before reg_ptr, SR1=0x%04X\r\n",
+               (unsigned int)(I2C1->STAR1 & 0xFFFF));
+        I2C_GenerateSTOP(I2C1, ENABLE);
+        return I2C_TIMEOUT;
+    }
+
     I2C_SendData(I2C1, reg_ptr);
 
     /* Step 6: Wait for EVT8_2 (byte transmitted, BTF set) */
-    status = i2c_wait_event(I2C_EVENT_MASTER_BYTE_TRANSMITTED,
-                            start_ticks, timeout_ms);
+    status = i2c_wait_event_ex(I2C_EVENT_MASTER_BYTE_TRANSMITTED,
+                               start_ticks, timeout_ms, 22);
     if (status != I2C_OK)
     {
         I2C_GenerateSTOP(I2C1, ENABLE);
         return status;
     }
+
+    /* Reset timeout reference for the data-read phase */
+    start_ticks = i2c_get_ticks();
 
     /* ====== Phase 2: Repeated START, read len bytes ====== */
 
@@ -254,7 +335,8 @@ static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
     I2C_GenerateSTART(I2C1, ENABLE);
 
     /* Step 8: Wait for EVT5 */
-    status = i2c_wait_event(I2C_EVENT_MASTER_MODE_SELECT, start_ticks, timeout_ms);
+    status = i2c_wait_event_ex(I2C_EVENT_MASTER_MODE_SELECT, start_ticks,
+                               timeout_ms, 30);
     if (status != I2C_OK)
     {
         I2C_GenerateSTOP(I2C1, ENABLE);
@@ -264,9 +346,12 @@ static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
     /* Step 9: Send address with receiver direction */
     I2C_Send7bitAddress(I2C1, addr, I2C_Direction_Receiver);
 
+    /* Allow slave time to acknowledge address */
+    Delay_Ms(10);
+
     /* Step 10: Wait for EVT6_RX (BUSY+MSL+ADDR, master receiver selected) */
-    status = i2c_wait_event(I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED,
-                            start_ticks, timeout_ms);
+    status = i2c_wait_event_ex(I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED,
+                               start_ticks, timeout_ms, 31);
     if (status != I2C_OK)
     {
         I2C_GenerateSTOP(I2C1, ENABLE);
@@ -281,7 +366,7 @@ static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
         I2C_GenerateSTOP(I2C1, ENABLE);
 
         /* Wait for RXNE (EVT7) */
-        status = i2c_wait_rxne(start_ticks, timeout_ms);
+        status = i2c_wait_rxne(start_ticks, timeout_ms, 32);
         if (status != I2C_OK)
         {
             return status;
@@ -308,7 +393,7 @@ static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
         }
 
         /* Wait for RXNE (EVT7) */
-        status = i2c_wait_rxne(start_ticks, timeout_ms);
+        status = i2c_wait_rxne(start_ticks, timeout_ms, 40 + i);
         if (status != I2C_OK)
         {
             return status;
@@ -331,6 +416,12 @@ static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
  *          Configures PB6 (SCL) and PB7 (SDA) as alternate-function
  *          open-drain, sets up I2C1 clock tree, and enables the peripheral.
  *
+ *          Order matches CH32V303 I2C example pattern:
+ *          1. Clocks + I2C DeInit (clean reset)
+ *          2. GPIO set high (ensure OD pins start released)
+ *          3. I2C config + enable (peripheral ready before GPIO AF switch)
+ *          4. GPIO AF_OD (route I2C peripheral to pins last, after I2C is live)
+ *
  * @return  none
  */
 void i2c_util_init(void)
@@ -338,32 +429,63 @@ void i2c_util_init(void)
     GPIO_InitTypeDef GPIO_InitStructure = {0};
     I2C_InitTypeDef I2C_InitStructure = {0};
 
-    /* Enable peripheral clocks */
+    /* Enable peripheral clocks.
+     * AFIO clock is required to clear any leftover pin remaps (see below). */
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_AFIO, ENABLE);
 
-    /* Configure PB6 (SCL) as alternate-function open-drain */
+    /* Reset AFIO to factory defaults.  This clears ALL pin remap bits that
+     * may have been set by previously-run firmware (I2C1→PB8/PB9, USART1→PB6/PB7,
+     * TIM4→PB6/PB7, etc.).  Without this, a stale remap can silently re-route the
+     * I2C1 peripheral to different pins, leaving PB6/PB7 disconnected. */
+    GPIO_AFIODeInit();
+
+    /* Force a clean I2C peripheral state by toggling its reset */
+    I2C_DeInit(I2C1);
+
+    /* Set SCL/SDA output data high before configuring as AF_OD.
+     * This ensures the open-drain outputs start in the released (high-Z) state,
+     * preventing an unintentional bus glitch during GPIO_Init(). */
+    GPIO_SetBits(GPIOB, GPIO_Pin_6 | GPIO_Pin_7);
+
+    /* ---- Configure GPIO FIRST (before I2C is enabled).
+     *      When PE transitions 0→1 later, the pins are already stable
+     *      in AF_OD mode, avoiding any glitch-induced state corruption. ---- */
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
 
-    /* Configure PB7 (SDA) as alternate-function open-drain */
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
 
-    /* Configure I2C1: 100kHz standard mode */
+    /* ---- Now enable and configure I2C1 (pins already AF_OD).
+     *      SWRST: set bit 15 to force a full internal state-machine reset,
+     *      then wait for hardware to clear it. This is stronger than DeInit
+     *      alone and recovers from silicon-level lockup states. ---- */
+    I2C1->CTLR1 |= (1 << 15);                    /* Set SWRST */
+    {
+        volatile int _swrst;
+        for (_swrst = 0; _swrst < 100; _swrst++)
+        {
+            __asm volatile ("nop");
+        }
+    }
+    I2C1->CTLR1 &= ~(1 << 15);                   /* Clear SWRST */
+
+    /* ---- Configure I2C1: 50kHz standard mode (conservative) ---- */
     I2C_InitStructure.I2C_ClockSpeed = 100000;
     I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;
-    I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_2;
+    I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_16_9;
     I2C_InitStructure.I2C_OwnAddress1 = 0x00;
     I2C_InitStructure.I2C_Ack = I2C_Ack_Enable;
     I2C_InitStructure.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
     I2C_Init(I2C1, &I2C_InitStructure);
 
-    /* Enable I2C1 peripheral */
+    /* I2C_Init already enables PE (peripheral enable) internally at line 184.
+     * Explicit I2C_Cmd is kept for clarity. */
     I2C_Cmd(I2C1, ENABLE);
 }
 

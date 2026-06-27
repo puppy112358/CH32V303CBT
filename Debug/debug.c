@@ -202,22 +202,38 @@ __attribute__((used)) int _write(int fd, char *buf, int size)
         }
 
     } while (writeSize);
-
 #else
-    /* Redirect printf to USB-CDC virtual COM port.
-     * Send data in 64-byte chunks (USB FS max packet size) via EP3 bulk IN.
-     * Non-blocking with timeout: drops data if host is not connected. */
-    while (i < size)
+    for(i = 0; i < size; i++)
     {
-        uint16_t chunk = (uint16_t)(size - i);
-        if (chunk > 64)
-        {
-            chunk = 64;
-        }
-        usb_cdc_write((const uint8_t *)(buf + i), chunk);
-        i += chunk;
+#if(DEBUG == DEBUG_UART1)
+        while(USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET);
+        USART_SendData(USART1, *buf++);
+#elif(DEBUG == DEBUG_UART2)
+        while(USART_GetFlagStatus(USART2, USART_FLAG_TC) == RESET);
+        USART_SendData(USART2, *buf++);
+#elif(DEBUG == DEBUG_UART3)
+        while(USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET);
+        USART_SendData(USART3, *buf++);
+#endif
     }
 #endif
+
+// #else
+//     /* Redirect printf to USB-CDC virtual COM port.
+//      * Send data in 64-byte chunks (USB FS max packet size) via EP3 bulk IN.
+//      * Non-blocking with timeout: drops data if host is not connected. */
+//     while (i < size)
+//     {
+//         uint16_t chunk = (uint16_t)(size - i);
+//         if (chunk > 64)
+//         {
+//             chunk = 64;
+//         }
+//         usb_cdc_write((const uint8_t *)(buf + i), chunk);
+//         i += chunk;
+//     }
+// #endif
+
     return size;
 }
 

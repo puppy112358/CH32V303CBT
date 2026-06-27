@@ -189,6 +189,36 @@ int main(void)
     SystemCoreClockUpdate();
     Delay_Init();
 
+    USART_Printf_Init(115200);  /* step 1: TX-only (example pattern) */
+    protocol_init();            /* step 2: TX+RX+interrupt */
+    DMA_INIT();                 /* step 3: DMA for USART1 RX (REQUIRED for IDLE+DMA reception) */
+    
+
+    printf("I2C1 init...\r\n");
+    i2c_util_init();
+    printf("I2C1 ready\r\n");
+
+    for (int i = 0; i < DEV_COUNT; i++)
+    {
+        init_status = ina226_init(&devs[i]);
+        dev_ok[i] = (init_status == I2C_OK);
+        if (dev_ok[i])
+        {
+            printf("INA226[%d] 0x%02X OK\r\n", i, devs[i].address);
+        }
+        else
+        {
+            printf("INA226[%d] 0x%02X FAIL(%d)\r\n", i, devs[i].address, init_status);
+        }
+    }
+
+    dac8571_init();
+    dac_status = dac8571_set_output(0);
+    dac_ok = (dac_status == I2C_OK);
+    printf("DAC8571 %s\r\n", dac_ok ? "OK" : "FAIL");
+
+
+
     /* ---- 2. USB-CDC early init (printf -> USB CDC from here on) ---- */
     usb_cdc_init();
 
@@ -213,31 +243,16 @@ int main(void)
     }
 
     /* ---- 3. I2C1 Bus ---- */
-    printf("I2C1 init...\r\n");
-    i2c_util_init();
-    printf("I2C1 ready\r\n");
+
+
 
     /* ---- 4. Protocol (USART1 cJSON) ----
      * Two-step init matches WCH USART example: TX-only first,
      * then full TX+RX+interrupt configuration. */
-    USART_Printf_Init(115200);  /* step 1: TX-only (example pattern) */
-    protocol_init();            /* step 2: TX+RX+interrupt */
-    DMA_INIT();                 /* step 3: DMA for USART1 RX (REQUIRED for IDLE+DMA reception) */
+   
 
     /* ---- 5. INA226 Devices ---- */
-    // for (i = 0; i < DEV_COUNT; i++)
-    // {
-    //     init_status = ina226_init(&devs[i]);
-    //     dev_ok[i] = (init_status == I2C_OK);
-    //     if (dev_ok[i])
-    //     {
-    //         printf("INA226[%d] 0x%02X OK\r\n", i, devs[i].address);
-    //     }
-    //     else
-    //     {
-    //         printf("INA226[%d] 0x%02X FAIL(%d)\r\n", i, devs[i].address, init_status);
-    //     }
-    // }
+
 
     /* ---- 6. EXTI4 - INA226 wired-OR ALARM ---- */
     // {
@@ -263,10 +278,7 @@ int main(void)
     // }
 
     /* ---- 7. DAC8571 ---- */
-    dac8571_init();
-    dac_status = dac8571_set_output(0);
-    dac_ok = (dac_status == I2C_OK);
-    printf("DAC8571 %s\r\n", dac_ok ? "OK" : "FAIL");
+
 
 
     /* ---- 8. PID Controllers ---- */
