@@ -139,14 +139,8 @@ void engage_cc(float target_current)
  */
 int main(void)
 {
-    // uint8_t i;
     i2c_status_t init_status;
-    // i2c_status_t dac_status;
-    // float mos_v[4];
-    // float mos_i[4];
-    // float bus_v, bus_i, bus_p;
     uint32_t enum_timeout;
-    // static uint32_t fault_free_ms = 0;
 
     /* ---- 1. System Core Setup ---- */
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
@@ -179,8 +173,8 @@ int main(void)
     printf("%d \r\n",y);
     dac8571_init();
     printf("dac output is %d\r\n",dac8571_set_output(1000));
-
-
+    dac_read_once(0x4c,&y);
+    printf("%d \r\n",y);
 
     /* ---- 2. USB-CDC early init (printf -> USB CDC from here on) ---- */
     usb_cdc_init();
@@ -204,63 +198,6 @@ int main(void)
     {
         printf("USB-CDC timeout, continuing\r\n");
     }
-
-    /* ---- 3. I2C1 Bus ---- */
-
-
-
-    /* ---- 4. Protocol (USART1 cJSON) ----
-     * Two-step init matches WCH USART example: TX-only first,
-     * then full TX+RX+interrupt configuration. */
-   
-
-    /* ---- 5. INA226 Devices ---- */
-
-
-    /* ---- 6. EXTI4 - INA226 wired-OR ALARM ---- */
-    // {
-    //     GPIO_InitTypeDef GPIO_InitStructure = {0};
-    //     EXTI_InitTypeDef EXTI_InitStructure = {0};
-
-    //     GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_4;
-    //     GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_IPU;
-    //     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    //     GPIO_Init(GPIOA, &GPIO_InitStructure);
-
-    //     GPIO_EXTILineConfig(GPIO_PortSourceGPIOA, GPIO_PinSource4);
-
-    //     EXTI_InitStructure.EXTI_Line    = EXTI_Line4;
-    //     EXTI_InitStructure.EXTI_Mode    = EXTI_Mode_Interrupt;
-    //     EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;
-    //     EXTI_InitStructure.EXTI_LineCmd = ENABLE;
-    //     EXTI_Init(&EXTI_InitStructure);
-
-    //     NVIC_SetPriority(EXTI4_IRQn, 0x01);
-    //     NVIC_EnableIRQ(EXTI4_IRQn);
-    //     printf("EXTI4 PA4 ready\r\n");
-    // }
-
-    /* ---- 7. DAC8571 ---- */
-
-        
-    
-    
-
-    /* ---- 8. PID Controllers ---- */
-    // pid_init(&pid_cv, PID_CV_KP, PID_CV_KI, PID_CV_KD);
-    // pid_init(&pid_cc, PID_CC_KP, PID_CC_KI, PID_CC_KD);
-    // printf("PID ready\r\n");
-
-    /* ---- 9. Fault Handler ---- */
-    // fault_init();
-    // printf("Fault ready, max retries %d\r\n", MAX_RETRY_COUNT);
-
-    /* ---- 10. Optional peripherals (uncomment when hw ready) ---- */
-    /* ws2812_init(); */
-    /* temp_sensor_init(); */
-    /* fan_init(); */
-
-    // printf("Init complete, entering loop\r\n");
 
     /* ==================================================================
      * Main Control Loop - 100ms cycle (10Hz)

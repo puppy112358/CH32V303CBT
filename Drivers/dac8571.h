@@ -21,7 +21,7 @@ extern "C" {
 
 /* DAC8571 7-bit I2C address (A0 pin strapped to GND) */
 #define DAC8571_ADDR    0x4C
-
+#define DAC8571_ADDR_read 0x4D
 /* Initialize DAC8571: send a probe write of zero to verify device presence.
  * Prints init status via printf. No hardware config registers to set. */
 void dac8571_init(void);

@@ -316,6 +316,66 @@ i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
     Delay_Ms(1);
     return I2C_OK;
 }
+i2c_status_t dac_read_once(uint8_t dev_addr, uint8_t *data)
+{
+    dev_addr = dev_addr << 1;
+    dev_addr+=1;
+    u8 buffer[2] = {0};
+    u16 temp = 0;
+    int waiting = 0;
+    while (I2C_GetFlagStatus(I2C1, I2C_FLAG_BUSY) != RESET) {
+        Delay_Us(10);
+        waiting ++;
+        if (waiting > 10000){
+            printf("I2C1 read error\r\n");
+            I2C_GenerateSTOP(I2C1, ENABLE);
+            return I2C_TIMEOUT;
+        }
+    };
+    I2C_GenerateSTART(I2C1, ENABLE);
+
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_MODE_SELECT));
+    I2C_Send7bitAddress(I2C1, dev_addr, I2C_Direction_Transmitter);
+
+    waiting = 0;
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED)) {
+        Delay_Us(10);
+        waiting++;
+        if (waiting > 10000) {
+            printf("I2C1 read error1\r\n");
+            I2C_GenerateSTOP(I2C1, ENABLE);
+            return I2C_TIMEOUT;
+        }
+    }
+
+    I2C_GenerateSTART(I2C1, ENABLE);
+
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_MODE_SELECT));
+    I2C_Send7bitAddress(I2C1, dev_addr, I2C_Direction_Receiver);
+    waiting = 0;
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED)) {
+        Delay_Us(10);
+        waiting++;
+        if (waiting > 10000) {
+            printf("I2C1 read error3\r\n");
+            I2C_GenerateSTOP(I2C1, ENABLE);
+            return 1;
+        }
+    }
+    while (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) == RESET);
+    buffer[0] = I2C_ReceiveData(I2C1);
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_RECEIVED));
+    buffer[1] = I2C_ReceiveData(I2C1);
+    I2C_AcknowledgeConfig(I2C1, ENABLE);
+
+
+    I2C_GenerateSTOP(I2C1, ENABLE);
+    temp = buffer[0] << 8 | buffer[1];
+
+    *data = temp;
+    Delay_Ms(1);
+    return I2C_OK;
+}
 
 /* --------------------------------------------------------------------------
  * Public API

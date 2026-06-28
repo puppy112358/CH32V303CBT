@@ -78,6 +78,7 @@ i2c_status_t i2c_util_read(uint8_t dev_addr, uint8_t reg_ptr,
 i2c_status_t i2c_util_bus_recovery(void);
 i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
                                   uint8_t *data);
+i2c_status_t dac_read_once(uint8_t dev_addr, uint8_t *data);
 
 #ifdef __cplusplus
 }
