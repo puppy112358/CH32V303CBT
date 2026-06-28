@@ -90,7 +90,7 @@ static uint8_t i2c_has_timed_out(uint32_t start_ticks, uint32_t timeout_ms)
  * Also returns I2C_NACK if I2C_FLAG_AF (Acknowledge Failure) is detected.
  *
  * step_id: diagnostic label for timeout messages (1=EVT5, 2=EVT6, 3=EVT8). */
-static i2c_status_t i2c_wait_event_ex(uint32_t event, uint32_t start_ticks,
+static i2c_status_t  i2c_wait_event_ex(uint32_t event, uint32_t start_ticks,
                                       uint32_t timeout_ms, uint8_t step_id)
 {
     while (!I2C_CheckEvent(I2C1, event))
@@ -131,26 +131,6 @@ static i2c_status_t i2c_wait_event_ex(uint32_t event, uint32_t start_ticks,
     return I2C_OK;
 }
 
-/* Poll for I2C_FLAG_RXNE (receive buffer not empty) with timeout.
- * Used during multi-byte reads where we need to wait for each byte.
- * step_id: diagnostic label for timeout messages. */
-static i2c_status_t i2c_wait_rxne(uint32_t start_ticks, uint32_t timeout_ms,
-                                  uint8_t step_id)
-{
-    while (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) == RESET)
-    {
-        if (i2c_has_timed_out(start_ticks, timeout_ms))
-        {
-            printf("I2C: T/O step %d (RXNE), SR1=0x%04X SR2=0x%04X\r\n",
-                   step_id,
-                   (unsigned int)(I2C1->STAR1 & 0xFFFF),
-                   (unsigned int)(I2C1->STAR2 & 0xFFFF));
-            return I2C_TIMEOUT;
-        }
-    }
-
-    return I2C_OK;
-}
 
 /* --------------------------------------------------------------------------
  * Single-attempt I2C master write (no recovery/retry)
@@ -251,157 +231,89 @@ static i2c_status_t i2c_write_once(uint8_t dev_addr, const uint8_t *data,
  * Single-attempt I2C master read (no recovery/retry)
  * Internal helper: writes register pointer, repeated START, reads len bytes.
  * ACK on all bytes except last (NACK before STOP). */
-static i2c_status_t i2c_read_once(uint8_t dev_addr, uint8_t reg_ptr,
-                                  uint8_t *data, uint8_t len,
-                                  uint32_t start_ticks, uint32_t timeout_ms)
+i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
+                                  uint8_t *data)
 {
-    i2c_status_t status;
-    uint8_t i;
-    uint8_t addr;
+    dev_addr = dev_addr << 1;
+    dev_addr+=1;
+    u8 buffer[2] = {0};
+    u16 temp = 0;
+    int waiting = 0;
+    while (I2C_GetFlagStatus(I2C1, I2C_FLAG_BUSY) != RESET) {
+        Delay_Us(10);
+        waiting ++;
+        if (waiting > 10000){
+            printf("I2C1 read error\r\n");
+            I2C_GenerateSTOP(I2C1, ENABLE);
+            return I2C_TIMEOUT;
+        }
+    };
+    I2C_GenerateSTART(I2C1, ENABLE);
 
-    /* Shift 7-bit address to 8-bit format */
-    addr = dev_addr << 1;
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_MODE_SELECT));
+    I2C_Send7bitAddress(I2C1, dev_addr, I2C_Direction_Transmitter);
 
-    /* Step 0: Wait for BUSY flag to clear */
-    while (I2C_GetFlagStatus(I2C1, I2C_FLAG_BUSY) != RESET)
-    {
-        if (i2c_has_timed_out(start_ticks, timeout_ms))
-        {
-            printf("I2C: BUSY stuck before read, SR1=0x%04X SR2=0x%04X\r\n",
-                   (unsigned int)(I2C1->STAR1 & 0xFFFF),
-                   (unsigned int)(I2C1->STAR2 & 0xFFFF));
+    waiting = 0;
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED)) {
+        Delay_Us(10);
+        waiting++;
+        if (waiting > 10000) {
+            printf("I2C1 read error1\r\n");
+            I2C_GenerateSTOP(I2C1, ENABLE);
             return I2C_TIMEOUT;
         }
     }
 
-    /* Reset timeout reference for the register-pointer write phase */
-    start_ticks = i2c_get_ticks();
-
-    /* ====== Phase 1: Write register pointer (no STOP) ====== */
-
-    /* Step 1: Generate START */
-    I2C_GenerateSTART(I2C1, ENABLE);
-
-    /* Step 2: Wait for EVT5 */
-    status = i2c_wait_event_ex(I2C_EVENT_MASTER_MODE_SELECT, start_ticks,
-                               timeout_ms, 20);
-    if (status != I2C_OK)
-    {
-        I2C_GenerateSTOP(I2C1, ENABLE);
-        return status;
-    }
-
-    /* Step 3: Send address with transmitter direction */
-    I2C_Send7bitAddress(I2C1, addr, I2C_Direction_Transmitter);
-
-    /* Allow slave time to acknowledge address */
-    Delay_Ms(10);
-
-    /* Step 4: Wait for EVT6 */
-    status = i2c_wait_event_ex(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED,
-                               start_ticks, timeout_ms, 21);
-    if (status != I2C_OK)
-    {
-        I2C_GenerateSTOP(I2C1, ENABLE);
-        return status;
-    }
-
-    /* Step 5: Send register pointer byte */
-    if (I2C_GetFlagStatus(I2C1, I2C_FLAG_TXE) == RESET)
-    {
-        printf("I2C: TXE not set before reg_ptr, SR1=0x%04X\r\n",
-               (unsigned int)(I2C1->STAR1 & 0xFFFF));
-        I2C_GenerateSTOP(I2C1, ENABLE);
-        return I2C_TIMEOUT;
-    }
-
+#if (Address_Lenth == Address_8bit)
     I2C_SendData(I2C1, reg_ptr);
 
-    /* Step 6: Wait for EVT8_2 (byte transmitted, BTF set) */
-    status = i2c_wait_event_ex(I2C_EVENT_MASTER_BYTE_TRANSMITTED,
-                               start_ticks, timeout_ms, 22);
-    if (status != I2C_OK)
-    {
-        I2C_GenerateSTOP(I2C1, ENABLE);
-        return status;
+//    Delay_Ms(10);
+    waiting = 0;
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED)){
+        Delay_Us(10);
+        waiting++;
+        if (waiting > 10000) {
+            printf("I2C1 read error2\r\n");
+            I2C_GenerateSTOP(I2C1, ENABLE);
+            return I2C_TIMEOUT;
+        }
     }
 
-    /* Reset timeout reference for the data-read phase */
-    start_ticks = i2c_get_ticks();
+#elif (Address_Lenth == Address_16bit)
+    I2C_SendData( I2C1, (u8)(reg_addr>>8) );
+    while( !I2C_CheckEvent( I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED ) );
 
-    /* ====== Phase 2: Repeated START, read len bytes ====== */
+    I2C_SendData( I2C1, (u8)(reg_addr&0x00FF) );
+    while( !I2C_CheckEvent( I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED ) );
 
-    /* Step 7: Generate repeated START */
+#endif
+
     I2C_GenerateSTART(I2C1, ENABLE);
 
-    /* Step 8: Wait for EVT5 */
-    status = i2c_wait_event_ex(I2C_EVENT_MASTER_MODE_SELECT, start_ticks,
-                               timeout_ms, 30);
-    if (status != I2C_OK)
-    {
-        I2C_GenerateSTOP(I2C1, ENABLE);
-        return status;
-    }
-
-    /* Step 9: Send address with receiver direction */
-    I2C_Send7bitAddress(I2C1, addr, I2C_Direction_Receiver);
-
-    /* Allow slave time to acknowledge address */
-    Delay_Ms(10);
-
-    /* Step 10: Wait for EVT6_RX (BUSY+MSL+ADDR, master receiver selected) */
-    status = i2c_wait_event_ex(I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED,
-                               start_ticks, timeout_ms, 31);
-    if (status != I2C_OK)
-    {
-        I2C_GenerateSTOP(I2C1, ENABLE);
-        return status;
-    }
-
-    /* Handle single-byte read (len == 1): NACK + STOP before reading */
-    if (len == 1)
-    {
-        /* Disable ACK (NACK) then generate STOP before receiving */
-        I2C_AcknowledgeConfig(I2C1, DISABLE);
-        I2C_GenerateSTOP(I2C1, ENABLE);
-
-        /* Wait for RXNE (EVT7) */
-        status = i2c_wait_rxne(start_ticks, timeout_ms, 32);
-        if (status != I2C_OK)
-        {
-            return status;
-        }
-
-        data[0] = I2C_ReceiveData(I2C1);
-
-        return I2C_OK;
-    }
-
-    /* Multi-byte read (len >= 2): ACK all except last byte */
-    for (i = 0; i < len; i++)
-    {
-        if (i == (len - 1))
-        {
-            /* Last byte: NACK then generate STOP */
-            I2C_AcknowledgeConfig(I2C1, DISABLE);
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_MODE_SELECT));
+    I2C_Send7bitAddress(I2C1, dev_addr, I2C_Direction_Receiver);
+    waiting = 0;
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED)) {
+        Delay_Us(10);
+        waiting++;
+        if (waiting > 10000) {
+            printf("I2C1 read error3\r\n");
             I2C_GenerateSTOP(I2C1, ENABLE);
+            return 1;
         }
-        else
-        {
-            /* Not last byte: ACK to request more data */
-            I2C_AcknowledgeConfig(I2C1, ENABLE);
-        }
-
-        /* Wait for RXNE (EVT7) */
-        status = i2c_wait_rxne(start_ticks, timeout_ms, 40 + i);
-        if (status != I2C_OK)
-        {
-            return status;
-        }
-
-        data[i] = I2C_ReceiveData(I2C1);
     }
+    while (I2C_GetFlagStatus(I2C1, I2C_FLAG_RXNE) == RESET);
+    buffer[0] = I2C_ReceiveData(I2C1);
+    while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_RECEIVED));
+    buffer[1] = I2C_ReceiveData(I2C1);
+    I2C_AcknowledgeConfig(I2C1, ENABLE);
 
+
+    I2C_GenerateSTOP(I2C1, ENABLE);
+    temp = buffer[0] << 8 | buffer[1];
+
+    *data = temp;
+    Delay_Ms(1);
     return I2C_OK;
 }
 
@@ -476,7 +388,7 @@ void i2c_util_init(void)
     I2C1->CTLR1 &= ~(1 << 15);                   /* Clear SWRST */
 
     /* ---- Configure I2C1: 50kHz standard mode (conservative) ---- */
-    I2C_InitStructure.I2C_ClockSpeed = 100000;
+    I2C_InitStructure.I2C_ClockSpeed = 400000;
     I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;
     I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_16_9;
     I2C_InitStructure.I2C_OwnAddress1 = 0x00;
@@ -553,17 +465,16 @@ i2c_status_t i2c_util_write(uint8_t dev_addr, const uint8_t *data,
  * @return  i2c_status_t - I2C_OK on success, error code on failure
  */
 i2c_status_t i2c_util_read(uint8_t dev_addr, uint8_t reg_ptr,
-                           uint8_t *data, uint8_t len, uint32_t timeout_ms)
+                           uint8_t *data)
 {
     i2c_status_t status;
-    uint32_t start_ticks;
+    // uint32_t start_ticks;
 
     /* First attempt */
     i2c_timeout_start();
-    start_ticks = i2c_get_ticks();
+    // start_ticks = i2c_get_ticks();
 
-    status = i2c_read_once(dev_addr, reg_ptr, data, len,
-                           start_ticks, timeout_ms);
+    status = i2c_read_once(dev_addr, reg_ptr, data);
 
     i2c_timeout_stop();
 
@@ -577,10 +488,9 @@ i2c_status_t i2c_util_read(uint8_t dev_addr, uint8_t reg_ptr,
 
     /* Retry */
     i2c_timeout_start();
-    start_ticks = i2c_get_ticks();
+    // start_ticks = i2c_get_ticks();
 
-    status = i2c_read_once(dev_addr, reg_ptr, data, len,
-                           start_ticks, timeout_ms);
+    status = i2c_read_once(dev_addr, reg_ptr, data);
 
     i2c_timeout_stop();
 

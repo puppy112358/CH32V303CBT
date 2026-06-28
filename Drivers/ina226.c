@@ -76,7 +76,7 @@ i2c_status_t ina226_get_bus_voltage(INA226_Dev *dev, float *voltage_v)
 
     /* Read 2 bytes from bus voltage register (0x02) */
     status = i2c_util_read(dev->address, INA226_REG_BUS_V,
-                           buf, 2, I2C_TIMEOUT_MS);
+                           buf);
     if (status != I2C_OK)
     {
         return status;
@@ -113,7 +113,7 @@ i2c_status_t ina226_get_shunt_voltage(INA226_Dev *dev, float *voltage_mv)
 
     /* Read 2 bytes from shunt voltage register (0x01) */
     status = i2c_util_read(dev->address, INA226_REG_SHUNT_V,
-                           buf, 2, I2C_TIMEOUT_MS);
+                           buf);
     if (status != I2C_OK)
     {
         return status;
@@ -150,7 +150,7 @@ i2c_status_t ina226_get_current(INA226_Dev *dev, float *current_a)
 
     /* Read 2 bytes from current register (0x04) */
     status = i2c_util_read(dev->address, INA226_REG_CURRENT,
-                           buf, 2, I2C_TIMEOUT_MS);
+                           buf);
     if (status != I2C_OK)
     {
         return status;
@@ -187,7 +187,7 @@ i2c_status_t ina226_get_power(INA226_Dev *dev, float *power_w)
 
     /* Read 2 bytes from power register (0x03) */
     status = i2c_util_read(dev->address, INA226_REG_POWER,
-                           buf, 2, I2C_TIMEOUT_MS);
+                           buf);
     if (status != I2C_OK)
     {
         return status;
@@ -224,7 +224,7 @@ i2c_status_t ina226_check_alert(INA226_Dev *dev, uint16_t *mask)
 
     /* Read 2 bytes from alert register (0x06) */
     status = i2c_util_read(dev->address, INA226_REG_ALERT,
-                           buf, 2, I2C_TIMEOUT_MS);
+                           buf);
     if (status != I2C_OK)
     {
         return status;
@@ -307,7 +307,7 @@ i2c_status_t ina226_read_calibration(INA226_Dev *dev, uint16_t *cal_value)
 
     /* Read 2 bytes from calibration register (0x05) */
     status = i2c_util_read(dev->address, INA226_REG_CALIB,
-                           buf, 2, I2C_TIMEOUT_MS);
+                           buf);
     if (status != I2C_OK)
     {
         return status;

@@ -141,7 +141,7 @@ int main(void)
 {
     // uint8_t i;
     i2c_status_t init_status;
-    i2c_status_t dac_status;
+    // i2c_status_t dac_status;
     // float mos_v[4];
     // float mos_i[4];
     // float bus_v, bus_i, bus_p;
@@ -162,11 +162,10 @@ int main(void)
     i2c_util_init();
     printf("I2C1 ready\r\n");
 
-    for (int i = 0; i < DEV_COUNT; i++)
+    for (int i = 0; i < 1; i++)
     {
         init_status = ina226_init(&devs[i]);
-        dev_ok[i] = (init_status == I2C_OK);
-        if (dev_ok[i])
+        if (init_status == I2C_OK)
         {
             printf("INA226[%d] 0x%02X OK\r\n", i, devs[i].address);
         }
@@ -175,11 +174,11 @@ int main(void)
             printf("INA226[%d] 0x%02X FAIL(%d)\r\n", i, devs[i].address, init_status);
         }
     }
-
+    u8 y = 0;
+    printf("ina226[0]'s %d \r\n",i2c_read_once(devs[0].address,0xfe,&y));
+    printf("%d \r\n",y);
     dac8571_init();
-    dac_status = dac8571_set_output(0);
-    dac_ok = (dac_status == I2C_OK);
-    printf("DAC8571 %s\r\n", dac_ok ? "OK" : "FAIL");
+    printf("dac output is %d\r\n",dac8571_set_output(1000));
 
 
 
@@ -243,7 +242,9 @@ int main(void)
 
     /* ---- 7. DAC8571 ---- */
 
-
+        
+    
+    
 
     /* ---- 8. PID Controllers ---- */
     // pid_init(&pid_cv, PID_CV_KP, PID_CV_KI, PID_CV_KD);

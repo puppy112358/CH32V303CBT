@@ -63,7 +63,7 @@ i2c_status_t i2c_util_write(uint8_t dev_addr, const uint8_t *data,
  * @return           I2C_OK on success, or error code on failure
  */
 i2c_status_t i2c_util_read(uint8_t dev_addr, uint8_t reg_ptr,
-                           uint8_t *data, uint8_t len, uint32_t timeout_ms);
+                           uint8_t *data);
 
 /* Attempt I2C bus recovery via 9-clock-pulse GPIO bit-banging.
  * Performs the following sequence:
@@ -76,6 +76,8 @@ i2c_status_t i2c_util_read(uint8_t dev_addr, uint8_t reg_ptr,
  * @return I2C_OK if SDA was released, I2C_BUS_FAULT if still stuck low
  */
 i2c_status_t i2c_util_bus_recovery(void);
+i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
+                                  uint8_t *data);
 
 #ifdef __cplusplus
 }

@@ -85,8 +85,8 @@ i2c_status_t dac8571_set_output(uint16_t value)
     uint8_t data[3];
 
     data[0] = 0x10;                        /* Control byte: normal mode (per STM32 reference) */
-    data[1] = (uint8_t)(value >> 8);       /* MSB */
-    data[2] = (uint8_t)(value & 0xFF);     /* LSB */
+    data[1] = (uint8_t)((value&0xff00) >> 8);       /* MSB */
+    data[2] = (uint8_t)(value & 0x00FF);     /* LSB */
 
     return i2c_util_write(DAC8571_ADDR, data, 3, I2C_TIMEOUT_MS);
 }
