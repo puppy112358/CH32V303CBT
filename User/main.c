@@ -36,11 +36,11 @@ void DMA1_Channel5_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast
 extern volatile uint8_t USBFS_DevEnumStatus;
 
 /* External references for ISR modules */
-extern INA226_Dev devs[5];
+extern INA226_Dev devs[4];
 extern ringbuffer ring_buffer;
 extern USART_DMA_CTRL_  USART_DMA_CTRL;
 /* Number of INA226 devices on I2C1 bus */
-#define DEV_COUNT    5
+#define DEV_COUNT    4
 
 /* Control loop timing */
 #define CONTROL_PERIOD_MS   100
@@ -87,43 +87,7 @@ INA226_Dev devs[DEV_COUNT] = {
     {0x41, 1},  /* MOS Channel 2 */
     {0x42, 2},  /* MOS Channel 3 */
     {0x43, 3},  /* MOS Channel 4 */
-    {0x44, 4},  /* Summary */
 };
-
-/*********************************************************************
- * @fn      softstart_engage
- *
- * @brief   Soft-start DAC ramp: linearly increase from 0 to target
- *          over 500ms (5 steps x 100ms).
- *
- * @param   target_dac - target DAC value (0-65535)
- *
- * @return  none
- */
-static void softstart_engage(uint16_t target_dac)
-{
-    uint8_t step;
-    uint16_t dac_out;
-    uint16_t step_size;
-
-    step_size = target_dac / SOFTSTART_STEPS;
-
-    for (step = 0; step < SOFTSTART_STEPS; step++)
-    {
-        if (step == SOFTSTART_STEPS - 1)
-        {
-            dac_out = target_dac;
-        }
-        else
-        {
-            dac_out = (uint16_t)((step + 1) * step_size);
-        }
-
-        if (dac_ok) dac8571_set_output(dac_out);
-        last_dac_value = dac_out;
-        Delay_Ms(CONTROL_PERIOD_MS);
-    }
-}
 
 /*********************************************************************
  * @fn      engage_cv
@@ -310,12 +274,12 @@ int main(void)
             const char *cmd_line = protocol_poll();
             if (cmd_line != NULL)
             {
-                protocol_process_command(cmd_line);
+                // protocol_process_command(cmd_line);
             }
         }
 
         /* ---- Send telemetry over USB-CDC at 10 Hz ---- */
-        cdc_send_telemetry();
+        // cdc_send_telemetry();
 
         cycle_count++;
         Delay_Ms(CONTROL_PERIOD_MS);
