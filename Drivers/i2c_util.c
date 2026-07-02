@@ -11,7 +11,7 @@
 #include "i2c_util.h"
 #include "debug.h"
 #include "ch32v30x.h"
-
+int a ,b;
 /* --------------------------------------------------------------------------
  * SysTick-based non-blocking timeout helpers
  * -------------------------------------------------------------------------- */
@@ -232,20 +232,19 @@ static i2c_status_t i2c_write_once(uint8_t dev_addr, const uint8_t *data,
  * Internal helper: writes register pointer, repeated START, reads len bytes.
  * ACK on all bytes except last (NACK before STOP). */
 i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
-                                  uint8_t *data)
+                                  uint32_t *data)
 {
     dev_addr = dev_addr << 1;
     dev_addr+=1;
-    u8 buffer[2] = {0};
-    u16 temp = 0;
+    volatile u8 buffer[2] = {0};
     int waiting = 0;
     while (I2C_GetFlagStatus(I2C1, I2C_FLAG_BUSY) != RESET) {
-        Delay_Us(10);
+        Delay_Us(100);
         waiting ++;
-        if (waiting > 10000){
+        if (waiting > 100){
             printf("I2C1 read error\r\n");
             I2C_GenerateSTOP(I2C1, ENABLE);
-            return I2C_TIMEOUT;
+            return FALSE;
         }
     };
     I2C_GenerateSTART(I2C1, ENABLE);
@@ -255,16 +254,15 @@ i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
 
     waiting = 0;
     while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED)) {
-        Delay_Us(10);
+        Delay_Us(100);
         waiting++;
         if (waiting > 10000) {
-            printf("I2C1 read error1\r\n");
+            printf("I2C1 read error\r\n");
             I2C_GenerateSTOP(I2C1, ENABLE);
-            return I2C_TIMEOUT;
+            return FALSE;
         }
     }
 
-#if (Address_Lenth == Address_8bit)
     I2C_SendData(I2C1, reg_ptr);
 
 //    Delay_Ms(10);
@@ -273,20 +271,12 @@ i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
         Delay_Us(10);
         waiting++;
         if (waiting > 10000) {
-            printf("I2C1 read error2\r\n");
+            printf("I2C1 read error\r\n");
             I2C_GenerateSTOP(I2C1, ENABLE);
-            return I2C_TIMEOUT;
+            return 1;
         }
     }
 
-#elif (Address_Lenth == Address_16bit)
-    I2C_SendData( I2C1, (u8)(reg_addr>>8) );
-    while( !I2C_CheckEvent( I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED ) );
-
-    I2C_SendData( I2C1, (u8)(reg_addr&0x00FF) );
-    while( !I2C_CheckEvent( I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED ) );
-
-#endif
 
     I2C_GenerateSTART(I2C1, ENABLE);
 
@@ -294,10 +284,10 @@ i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
     I2C_Send7bitAddress(I2C1, dev_addr, I2C_Direction_Receiver);
     waiting = 0;
     while (!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED)) {
-        Delay_Us(10);
+        Delay_Us(100);
         waiting++;
-        if (waiting > 10000) {
-            printf("I2C1 read error3\r\n");
+        if (waiting > 100) {
+            printf("I2C1 read error\r\n");
             I2C_GenerateSTOP(I2C1, ENABLE);
             return 1;
         }
@@ -310,9 +300,8 @@ i2c_status_t i2c_read_once(uint8_t dev_addr, int reg_ptr,
 
 
     I2C_GenerateSTOP(I2C1, ENABLE);
-    temp = buffer[0] << 8 | buffer[1];
+    *data =(buffer[0] << 8 )| buffer[1];
 
-    *data = temp;
     Delay_Ms(1);
     return I2C_OK;
 }
@@ -508,54 +497,7 @@ i2c_status_t i2c_util_write(uint8_t dev_addr, const uint8_t *data,
     return status;
 }
 
-/*********************************************************************
- * @fn      i2c_util_read
- *
- * @brief   Read len bytes from an I2C slave device register with timeout
- *          protection. Writes register pointer (no STOP), issues repeated
- *          START, reads len bytes (NACK on last byte).
- *          On failure, performs bus recovery and retries once.
- *
- * @param   dev_addr   7-bit I2C slave address
- * @param   reg_ptr    Register pointer byte to write
- * @param   data       Buffer to store read data
- * @param   len        Number of bytes to read
- * @param   timeout_ms Timeout in milliseconds
- *
- * @return  i2c_status_t - I2C_OK on success, error code on failure
- */
-i2c_status_t i2c_util_read(uint8_t dev_addr, uint8_t reg_ptr,
-                           uint8_t *data)
-{
-    i2c_status_t status;
-    // uint32_t start_ticks;
 
-    /* First attempt */
-    i2c_timeout_start();
-    // start_ticks = i2c_get_ticks();
-
-    status = i2c_read_once(dev_addr, reg_ptr, data);
-
-    i2c_timeout_stop();
-
-    if (status == I2C_OK)
-    {
-        return I2C_OK;
-    }
-
-    /* On timeout or bus fault: attempt recovery and retry once */
-    i2c_util_bus_recovery();
-
-    /* Retry */
-    i2c_timeout_start();
-    // start_ticks = i2c_get_ticks();
-
-    status = i2c_read_once(dev_addr, reg_ptr, data);
-
-    i2c_timeout_stop();
-
-    return status;
-}
 
 /*********************************************************************
  * @fn      i2c_util_bus_recovery

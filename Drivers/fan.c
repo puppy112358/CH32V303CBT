@@ -180,101 +180,54 @@ void fan_update(float current_temp_c)
 }
 
 /*********************************************************************
- * @fn      fan_init
+ * @fn      TIM3_PWMOut_Init
  *
- * @brief   Initialize fan controller: TIM3 PWM + input capture + PID.
+ * @brief   Initializes TIM3 PWM Output .
  *
- *          Hardware:
- *          - PA6: TIM3 CH1 alternate function push-pull (25kHz PWM)
- *          - PA7: TIM3 CH2 input pull-up (tachometer open-drain)
- *          - TIM3 clock: APB1 PCLK1 × 2 = 144MHz (APB1 prescaler /2)
- *          - PSC=143 → 1MHz counter, ARR=39 → 25kHz PWM
- *          - CH2 input capture: rising edge, direct TI2, no prescaler
- *          - NVIC: TIM3_IRQn at priority 0x03
- *
- *          Software:
- *          - PID: PI-only (Kp=0.20, Ki=0.02, Kd=0) with anti-windup
- *          - All tachometer and stall state zeroed
+ * @param   arr - the period value.
+ *          psc - the prescaler value.
+ *          ccp - the pulse value.
  *
  * @return  none
  */
-void fan_init(void)
+void fan_init( u16 arr, u16 psc, u16 ccp )
 {
-    GPIO_InitTypeDef GPIO_InitStructure = {0};
-    TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure = {0};
-    TIM_OCInitTypeDef TIM_OCInitStructure = {0};
-    TIM_ICInitTypeDef TIM_ICInitStructure = {0};
+	GPIO_InitTypeDef GPIO_InitStructure={0};
+	TIM_OCInitTypeDef TIM_OCInitStructure={0};
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure={0};
+    
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
+    GPIO_PinRemapConfig(GPIO_PartialRemap_TIM3,ENABLE);
 
-    /* ---- 1. Enable peripheral clocks ---- */
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
+	RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOB , ENABLE );
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3,ENABLE);
 
-    /* ---- 2. Configure PA6 as AF push-pull for TIM3 CH1 PWM output ---- */
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init( GPIOA, &GPIO_InitStructure );
 
-    /* ---- 3. Configure PA7 as input with weak pull-up for tachometer ---- */
-    /* PC fan tachometer is open-drain; internal pull-up ensures clean edges. */
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
+	TIM_TimeBaseInitStructure.TIM_Period = arr;
+	TIM_TimeBaseInitStructure.TIM_Prescaler = psc;
+	TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1;
+	TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;
+	TIM_TimeBaseInit( TIM3, &TIM_TimeBaseInitStructure);
 
-    /* ---- 4. Configure TIM3 time base ---- */
-    /* APB1 PCLK1 = 72MHz (96MHz HSE, APB1 prescaler /2).
-     * TIM3 clock = PCLK1 × 2 = 144MHz (CH32V303 timer clock doubler).
-     * PSC=143 → 144MHz / 144 = 1MHz counter.
-     * ARR=39 → 1MHz / 40 = 25kHz PWM (Intel 4-wire fan spec). */
-    TIM_TimeBaseStructure.TIM_Period = TIM3_ARR;
-    TIM_TimeBaseStructure.TIM_Prescaler = TIM3_PSC;
-    TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;
-    TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
-    TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure);
+#if (PWM_MODE == PWM_MODE1)
+  TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
 
-    /* ---- 5. Configure TIM3 CH1 as PWM mode 1 output ---- */
-    /* Initial duty = 0% (fan OFF). PWM mode 1: output HIGH when CNT < CCR. */
-    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
-    TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
-    TIM_OCInitStructure.TIM_Pulse = 0;
-    TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
-    TIM_OC1Init(TIM3, &TIM_OCInitStructure);
+#elif (PWM_MODE == PWM_MODE2)
+	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM2;
 
-    /* ---- 6. Configure TIM3 CH2 as input capture (rising edge) ---- */
-    TIM_ICInitStructure.TIM_Channel = TIM_Channel_2;
-    TIM_ICInitStructure.TIM_ICPolarity = TIM_ICPolarity_Rising;
-    TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI;
-    TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1;
-    TIM_ICInitStructure.TIM_ICFilter = 0x0;
-    TIM_ICInit(TIM3, &TIM_ICInitStructure);
+#endif
 
-    /* ---- 7. Enable TIM3 CH2 capture interrupt ---- */
-    TIM_ITConfig(TIM3, TIM_IT_CC2, ENABLE);
+	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+	TIM_OCInitStructure.TIM_Pulse = ccp;
+	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
+	TIM_OC1Init( TIM3, &TIM_OCInitStructure );
 
-    /* ---- 8. Configure NVIC for TIM3 ---- */
-    /* Priority 0x03: same as DMA1_CH5, lower than EXTI4 (0x01) and USART3 (0x02). */
-    NVIC_SetPriority(TIM3_IRQn, 0x03);
-    NVIC_EnableIRQ(TIM3_IRQn);
-
-    /* ---- 9. Enable TIM3 counter (PWM runs immediately at 0% duty = output LOW) ---- */
-    TIM_Cmd(TIM3, ENABLE);
-
-    /* ---- 10. Initialize fan PID (PI-only) ---- */
-    pid_init(&fan_pid, FAN_KP, FAN_KI, FAN_KD);
-    pid_compute(&fan_pid, FAN_TARGET_TEMP_C, 25.0f, 0.1f);  /* Seed with room temp */
-
-    /* ---- 11. Zero tachometer and stall state ---- */
-    tacho_last_capture  = 0;
-    tacho_period_ticks  = 0;
-    tacho_valid         = 0;
-    tacho_timeout       = 0;
-    fan_rpm             = 0;
-    fan_duty_pct        = 0;
-    fan_current_duty_ccr = 0;
-    stall_cycle_counter = 0;
-    fan_stall           = 0;
-
-    printf("Fan init: TIM3 PA6 PWM 25kHz + PA7 tacho IC, target=%.0f°C, Kp=%.2f Ki=%.3f\r\n",
-           FAN_TARGET_TEMP_C, FAN_KP, FAN_KI);
+	TIM_CtrlPWMOutputs(TIM3, ENABLE );
+	TIM_OC1PreloadConfig( TIM3, TIM_OCPreload_Disable );
+	TIM_ARRPreloadConfig( TIM3, ENABLE );
+	TIM_Cmd( TIM3, ENABLE );
 }

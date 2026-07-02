@@ -78,45 +78,7 @@ void HardFault_Handler(void)
  *
  * @return  none
  */
-void EXTI4_IRQHandler(void)
-{
-    uint8_t i;
-    uint16_t alert_mask;
-    i2c_status_t st;
 
-    /* Step 1: Read alert registers from all 4 MOS channels (devs[0]-devs[3]).
-     *         Reading the mask register also clears the INA226 latch. */
-    fault_source_mask = 0;
-    for (i = 0; i < 4; i++)
-    {
-        alert_mask = 0;
-        st = ina226_check_alert(&devs[i], &alert_mask);
-        if (st == I2C_OK && (alert_mask & INA226_ALERT_SHUNT_OV))
-        {
-            /* Set bit corresponding to this channel's logical ID */
-            fault_source_mask |= (uint16_t)(1 << devs[i].channel);
-        }
-    }
-
-    /* Step 2: Zero DAC immediately — hardware protection takes priority.
-     *         Disable IRQ during DAC I2C transaction for atomic zeroing. */
-    __disable_irq();
-    dac8571_set_output(0);
-    __enable_irq();
-
-    /* Step 3: Signal fault to main loop */
-    fault_triggered = 1;
-
-    /* Step 4: Diagnostic snapshot — fault mask, DAC (now zeroed), MOS addresses */
-    printf("[FAULT] mask=0x%04X dac=%u addr=0x%02X-0x%02X-0x%02X-0x%02X\r\n",
-           fault_source_mask,
-           last_dac_value,
-           devs[0].address, devs[1].address,
-           devs[2].address, devs[3].address);
-
-    /* Step 5: Clear EXTI4 pending bit to allow next falling-edge detection */
-    EXTI_ClearITPendingBit(EXTI_Line4);
-}
 
 /*********************************************************************
  * @fn      USART1_IRQHandler

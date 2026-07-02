@@ -1,14 +1,14 @@
 /********************************** (C) COPYRIGHT *******************************
-* File Name          : main.c
-* Author             : WCH
-* Version            : V1.0.0
-* Date               : 2021/06/06
-* Description        : Main program body.
-*********************************************************************************
-* Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
-* Attention: This software (modified or not) and binary are used for
-* microcontroller manufactured by Nanjing Qinheng Microelectronics.
-*******************************************************************************/
+ * File Name          : main.c
+ * Author             : WCH
+ * Version            : V1.0.0
+ * Date               : 2021/06/06
+ * Description        : Main program body.
+ *********************************************************************************
+ * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
+ * Attention: This software (modified or not) and binary are used for
+ * microcontroller manufactured by Nanjing Qinheng Microelectronics.
+ *******************************************************************************/
 
 /*
  *@Note
@@ -19,8 +19,8 @@
  */
 
 #include "debug.h"
-void USART1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
-void DMA1_Channel5_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void USART1_IRQHandler (void) __attribute__ ((interrupt ("WCH-Interrupt-fast")));
+void DMA1_Channel5_IRQHandler (void) __attribute__ ((interrupt ("WCH-Interrupt-fast")));
 #include "../Drivers/i2c_util.h"
 #include "../Drivers/ina226.h"
 #include "../Drivers/dac8571.h"
@@ -38,16 +38,24 @@ extern volatile uint8_t USBFS_DevEnumStatus;
 /* External references for ISR modules */
 extern INA226_Dev devs[4];
 extern ringbuffer ring_buffer;
-extern USART_DMA_CTRL_  USART_DMA_CTRL;
+extern USART_DMA_CTRL_ USART_DMA_CTRL;
 /* Number of INA226 devices on I2C1 bus */
-#define DEV_COUNT    4
+
+#define DEV_COUNT 4
 
 /* Control loop timing */
-#define CONTROL_PERIOD_MS   100
-#define SOFTSTART_STEPS     5
+#define CONTROL_PERIOD_MS 100
+#define SOFTSTART_STEPS 5
+
+#define PWM_MODE PWM_MODE2
+
+typedef enum {
+    Relay_off = 0,
+    Relay_on
+} RelayAction;
 
 /* ISR-to-main-loop fault flags (defined in ch32v30x_it.c) */
-extern volatile uint8_t  fault_triggered;
+extern volatile uint8_t fault_triggered;
 extern volatile uint16_t fault_source_mask;
 extern volatile uint16_t last_dac_value;
 
@@ -56,7 +64,7 @@ extern volatile float heatsink_temp_c;
 
 /* Fan status (defined in Drivers/fan.c) */
 extern volatile uint16_t fan_rpm;
-extern volatile uint8_t  fan_stall;
+extern volatile uint8_t fan_stall;
 
 /* PID instances */
 PID_Instance pid_cv;
@@ -83,10 +91,10 @@ uint8_t dac_ok;
  *   0x44: Summary      (A1=VS,  A0=GND)
  */
 INA226_Dev devs[DEV_COUNT] = {
-    {0x40, 0},  /* MOS Channel 1 */
-    {0x41, 1},  /* MOS Channel 2 */
-    {0x42, 2},  /* MOS Channel 3 */
-    {0x43, 3},  /* MOS Channel 4 */
+    {0x40, 0}, /* MOS Channel 1 */
+    {0x41, 1}, /* MOS Channel 2 */
+    {0x42, 2}, /* MOS Channel 3 */
+    {0x43, 3}, /* MOS Channel 4 */
 };
 
 /*********************************************************************
@@ -100,12 +108,11 @@ INA226_Dev devs[DEV_COUNT] = {
  *
  * @return  none
  */
-void engage_cv(float target_voltage)
-{
+void engage_cv (float target_voltage) {
     system_mode = MODE_CV;
     cv_target_voltage = target_voltage;
     last_dac_value = 0; /* hardware not active yet */
-    printf("[CV] target=%.2fV\r\n", target_voltage);
+    printf ("[CV] target=%.2fV\r\n", target_voltage);
 }
 
 /*********************************************************************
@@ -119,12 +126,11 @@ void engage_cv(float target_voltage)
  *
  * @return  none
  */
-void engage_cc(float target_current)
-{
+void engage_cc (float target_current) {
     system_mode = MODE_CC;
     cc_target_current = target_current;
     last_dac_value = 0; /* hardware not active yet */
-    printf("[CC] target=%.2fA\r\n", target_current);
+    printf ("[CC] target=%.2fA\r\n", target_current);
 }
 
 /*********************************************************************
@@ -137,66 +143,72 @@ void engage_cc(float target_current)
  *
  * @return  none
  */
-int main(void)
-{
+int main (void) {
     i2c_status_t init_status;
     uint32_t enum_timeout;
 
     /* ---- 1. System Core Setup ---- */
-    NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
+    NVIC_PriorityGroupConfig (NVIC_PriorityGroup_2);
     SystemCoreClockUpdate();
     Delay_Init();
 
-    USART_Printf_Init(115200);  /* step 1: TX-only (example pattern) */
+    USART_Printf_Init (115200); /* step 1: TX-only (example pattern) */
     protocol_init();            /* step 2: TX+RX+interrupt */
     DMA_INIT();                 /* step 3: DMA for USART1 RX (REQUIRED for IDLE+DMA reception) */
-    
 
-    printf("I2C1 init...\r\n");
+
+    // 继电器高电平 - 打开
+    RCC_APB2PeriphClockCmd (RCC_APB2Periph_GPIOB, ENABLE);
+    GPIO_InitTypeDef GPIO_InitStructure;
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init (GPIOB, &GPIO_InitStructure);
+    GPIO_WriteBit (GPIOB, GPIO_Pin_4, Relay_on);
+
+
+    printf ("I2C1 init...\r\n");
     i2c_util_init();
-    printf("I2C1 ready\r\n");
+    printf ("I2C1 ready\r\n");
 
-    for (int i = 0; i < 1; i++)
-    {
-        init_status = ina226_init(&devs[i]);
-        if (init_status == I2C_OK)
-        {
-            printf("INA226[%d] 0x%02X OK\r\n", i, devs[i].address);
-        }
-        else
-        {
-            printf("INA226[%d] 0x%02X FAIL(%d)\r\n", i, devs[i].address, init_status);
+    for (int i = 0; i < 4; i++) {
+        init_status = ina226_init (&devs[i]);
+        if (init_status == I2C_OK) {
+            printf ("INA226[%d] 0x%02X OK\r\n", i, devs[i].address);
+        } else {
+            printf ("INA226[%d] 0x%02X FAIL(%d)\r\n", i, devs[i].address, init_status);
         }
     }
-    u8 y = 0;
-    printf("ina226[0]'s %d \r\n",i2c_read_once(devs[0].address,0xfe,&y));
-    printf("%d \r\n",y);
+    u32 y = 0;
+    printf ("ina226[0]'s %d \r\n", i2c_read_once (devs[0].address, 0xfe, &y));
+    printf ("%d \r\n", y);
+    printf ("ina226[0]'s %d \r\n", i2c_read_once (devs[0].address, 0x05, &y));
+    printf ("%d \r\n", y);
+
     dac8571_init();
-    printf("dac output is %d\r\n",dac8571_set_output(1000));
-    dac_read_once(0x4c,&y);
-    printf("%d \r\n",y);
+    printf ("dac output is %d\r\n", dac8571_set_output (1000));
+    // dac_read_once (0x4c, &y);
+    // printf ("%d \r\n", y);
 
     /* ---- 2. USB-CDC early init (printf -> USB CDC from here on) ---- */
     usb_cdc_init();
 
-    printf("\r\n=== Electronic Load Controller ===\r\n");
-    printf("SystemClk:%d\r\n", SystemCoreClock);
-    printf("ChipID:%08x\r\n", DBGMCU_GetCHIPID());
+    printf ("\r\n=== Electronic Load Controller ===\r\n");
+    printf ("SystemClk:%d\r\n", SystemCoreClock);
+    printf ("ChipID:%08x\r\n", DBGMCU_GetCHIPID());
 
     /* Wait for USB host enumeration */
     enum_timeout = 5000;
-    while (USBFS_DevEnumStatus == 0 && enum_timeout > 0)
-    {
-        Delay_Ms(10);
+
+
+    while (USBFS_DevEnumStatus == 0 && enum_timeout > 0) {
+        Delay_Ms (10);
         enum_timeout -= 10;
     }
-    if (USBFS_DevEnumStatus)
-    {
-        printf("USB-CDC enumerated\r\n");
-    }
-    else
-    {
-        printf("USB-CDC timeout, continuing\r\n");
+    if (USBFS_DevEnumStatus) {
+        printf ("USB-CDC enumerated\r\n");
+    } else {
+        printf ("USB-CDC timeout, continuing\r\n");
     }
 
     /* ==================================================================
@@ -205,24 +217,52 @@ int main(void)
      * UART1 (odd parity): receive cJSON set_mode CV/CC commands
      * USB-CDC:            send cJSON telemetry at 10 Hz
      * ================================================================== */
-    while (1)
-    {
+
+
+    // 风扇初始化
+    fan_init (100 - 1, 48000 - 1, 50);
+    uint32_t a0, b0, c0;
+    uint32_t a1, b1, c1;
+    uint32_t a2, b2, c2;
+    uint32_t a3, b3, c3;
+
+    while (1) {
         /* ---- Poll USART1 for cJSON commands ---- */
-        {
-            const char *cmd_line = protocol_poll();
-            if (cmd_line != NULL)
-            {
-                // protocol_process_command(cmd_line);
-            }
-        }
+        // {
+        //     const char *cmd_line = protocol_poll();
+        //     if (cmd_line != NULL)
+        //     {
+        //         // protocol_process_command(cmd_line);
+        //     }
+        // }
 
         /* ---- Send telemetry over USB-CDC at 10 Hz ---- */
         // cdc_send_telemetry();
+        i2c_read_once (devs[0].address, Bus_V_Reg, &a0);
+        i2c_read_once (devs[0].address, Shunt_V_Reg, &b0);
+        i2c_read_once (devs[0].address, Current_Reg, &c0);
+
+        i2c_read_once (devs[1].address, Bus_V_Reg, &a1);
+        i2c_read_once (devs[1].address, Shunt_V_Reg, &b1);
+        i2c_read_once (devs[1].address, Current_Reg, &c1);
+
+        i2c_read_once (devs[2].address, Bus_V_Reg, &a2);
+        i2c_read_once (devs[2].address, Shunt_V_Reg, &b2);
+        i2c_read_once (devs[2].address, Current_Reg, &c2);
+
+        i2c_read_once (devs[3].address, Bus_V_Reg, &a3);
+        i2c_read_once (devs[3].address, Shunt_V_Reg, &b3);
+        i2c_read_once (devs[3].address, Current_Reg, &c3);
 
         cycle_count++;
-        Delay_Ms(CONTROL_PERIOD_MS);
+        Delay_Ms (100);
+        printf ("ina226[0]'s bus_v is %.2fV , shunt_v is %.2fmV, current is %.1fmA \r\n", 11.0 * a0 * 1.25 / 1000.0, b0 * 2.5 * 0.001, c0 * 0.305);
+        printf ("ina226[1]'s bus_v is %.2fV , shunt_v is %.2fmV, current is %.1fmA \r\n", 11.0 * a1 * 1.25 / 1000.0, b1 * 2.5 * 0.001, c1 * 0.305);
+        printf ("ina226[2]'s bus_v is %.2fV , shunt_v is %.2fmV, current is %.1fmA \r\n", 11.0 * a2 * 1.25 / 1000.0, b2 * 2.5 * 0.001, c2 * 0.305);
+        printf ("ina226[3]'s bus_v is %.2fV , shunt_v is %.2fmV, current is %.1fmA \r\n", 11.0 * a3 * 1.25 / 1000.0, b3 * 2.5 * 0.001, c3 * 0.305);
     }
 }
+
 /*********************************************************************
  * @fn      USART1_IRQHandler
  *
@@ -230,24 +270,22 @@ int main(void)
  *
  * @return  none
  */
-void USART1_IRQHandler(void)
-{
-    if (USART_GetITStatus(USART1, USART_IT_IDLE) != RESET)
-    {
+void USART1_IRQHandler (void) {
+    if (USART_GetITStatus (USART1, USART_IT_IDLE) != RESET) {
         // IDLE
-        uint16_t rxlen     = (RX_BUFFER_LEN - USART_RX_CH->CNTR);
-        uint8_t  oldbuffer = USART_DMA_CTRL.DMA_USE_BUFFER;
+        uint16_t rxlen = (RX_BUFFER_LEN - USART_RX_CH->CNTR);
+        uint8_t oldbuffer = USART_DMA_CTRL.DMA_USE_BUFFER;
 
         USART_DMA_CTRL.DMA_USE_BUFFER = !oldbuffer;
 
-        DMA_Cmd(USART_RX_CH, DISABLE);
-        DMA_SetCurrDataCounter(USART_RX_CH, RX_BUFFER_LEN);
+        DMA_Cmd (USART_RX_CH, DISABLE);
+        DMA_SetCurrDataCounter (USART_RX_CH, RX_BUFFER_LEN);
         // Switch buffer
         USART_RX_CH->MADDR = (uint32_t)(USART_DMA_CTRL.Rx_Buffer[USART_DMA_CTRL.DMA_USE_BUFFER]);
-        DMA_Cmd(USART_RX_CH, ENABLE);
+        DMA_Cmd (USART_RX_CH, ENABLE);
 
-        USART_ReceiveData(USART1); // clear IDLE flag
-        ring_buffer_push_huge(USART_DMA_CTRL.Rx_Buffer[oldbuffer], rxlen);
+        USART_ReceiveData (USART1);  // clear IDLE flag
+        ring_buffer_push_huge (USART_DMA_CTRL.Rx_Buffer[oldbuffer], rxlen);
     }
 }
 
@@ -258,22 +296,20 @@ void USART1_IRQHandler(void)
  *
  * @return  none
  */
-void DMA1_Channel5_IRQHandler(void)
-{
-    uint16_t rxlen     = RX_BUFFER_LEN;
-    uint8_t  oldbuffer = USART_DMA_CTRL.DMA_USE_BUFFER;
+void DMA1_Channel5_IRQHandler (void) {
+    uint16_t rxlen = RX_BUFFER_LEN;
+    uint8_t oldbuffer = USART_DMA_CTRL.DMA_USE_BUFFER;
     // FULL
 
     USART_DMA_CTRL.DMA_USE_BUFFER = !oldbuffer;
 
-    DMA_Cmd(USART_RX_CH, DISABLE);
-    DMA_SetCurrDataCounter(USART_RX_CH, RX_BUFFER_LEN);
+    DMA_Cmd (USART_RX_CH, DISABLE);
+    DMA_SetCurrDataCounter (USART_RX_CH, RX_BUFFER_LEN);
     // Switch buffer
     USART_RX_CH->MADDR = (uint32_t)(USART_DMA_CTRL.Rx_Buffer[USART_DMA_CTRL.DMA_USE_BUFFER]);
-    DMA_Cmd(USART_RX_CH, ENABLE);
+    DMA_Cmd (USART_RX_CH, ENABLE);
 
-    ring_buffer_push_huge(USART_DMA_CTRL.Rx_Buffer[oldbuffer], rxlen);
+    ring_buffer_push_huge (USART_DMA_CTRL.Rx_Buffer[oldbuffer], rxlen);
 
-    DMA_ClearITPendingBit(DMA1_IT_TC5);
+    DMA_ClearITPendingBit (DMA1_IT_TC5);
 }
-

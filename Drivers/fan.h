@@ -32,6 +32,8 @@ extern "C" {
 #define FAN_KI                       0.02f    /* PID integral gain */
 #define FAN_KD                       0.0f     /* PID derivative gain (PI-only) */
 #define FAN_PID_MAX                  100.0f   /* PID output max (maps to 100% duty) */
+#define PWM_MODE1   0
+#define PWM_MODE2   1
 
 /* --------------------------------------------------------------------------
  * External Globals
@@ -66,7 +68,7 @@ extern volatile uint16_t tacho_timeout;        /* Cycles since last valid captur
  *
  * @return none
  */
-void fan_init(void);
+void fan_init( uint16_t arr, uint16_t psc, uint16_t ccp );
 
 /**
  * @brief  Run one iteration of fan control (called each 100ms cycle).

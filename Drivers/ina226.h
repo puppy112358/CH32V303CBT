@@ -54,10 +54,10 @@ extern "C" {
  * -------------------------------------------------------------------------- */
 
 /* Shunt resistor value in ohms — MUST match PCB BOM */
-#define INA226_R_SHUNT           0.010f
+#define INA226_R_SHUNT           0.150f
 
 /* Maximum expected current in amperes */
-#define INA226_MAX_CURRENT       5.0f
+#define INA226_MAX_CURRENT       10.0f
 
 /* Current LSB = Max_Current / 32768 (A/bit) */
 #define INA226_CURRENT_LSB       (INA226_MAX_CURRENT / 32768.0f)
@@ -87,6 +87,31 @@ typedef struct
     uint8_t address;    /* I2C 7-bit slave address */
     uint8_t channel;    /* Logical channel ID (0-4 for up to 5 devices) */
 } INA226_Dev;
+
+#define addr1                      0x80
+#define addr2                      0x82
+#define addr3                      0x84
+#define addr4                      0x86
+#define addr5                      0x88
+#define addr6                      0x80
+#define addr7                      0x82
+#define addr8                      0x84
+#define Config_Reg                 0x00
+#define Shunt_V_Reg                0x01//并联电压
+#define Bus_V_Reg                  0x02//测量电压
+#define PASSED                       0
+#define FALSE                      1
+
+#define Power_Reg                  0x03//功率寄存器，值等 于 当 前 LSB编 程 值 的 25倍
+#define Current_Reg                0x04
+#define Calib_Reg                  0x05
+#define Mask_En_Reg                0x06//控制使能警报，选用警报选项为电流
+#define Alert_Reg_limit            0x07//警报
+#define Man_ID_Reg                 0xFE  //0x5449
+#define ID_Reg                     0xFF  //0x2260
+
+#define config_vlaue               0x4127//0100_010_100_100_111 //采集16次取平均值更新一次,连续测量分流电压和总线电压
+#define calibrate_value            0x3200//12800
 
 /* --------------------------------------------------------------------------
  * Public API
